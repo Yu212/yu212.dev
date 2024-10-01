@@ -4,11 +4,8 @@ const nextConfig = {
         remotePatterns: [
             {
                 protocol: "https",
-                hostname: "img.atcoder.jp",
-            },
-            {
-                protocol: "https",
                 hostname: "cdn.jsdelivr.net",
+                pathname: "/gh/jdecked/twemoji@latest/assets/**"
             }
         ]
     }
