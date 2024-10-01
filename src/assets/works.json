@@ -1,0 +1,99 @@
+[
+  {
+    "title": "Zoisite",
+    "description": "A programming language designed exclusively for competitive programming.",
+    "thumbnail": {
+      "src": "/images/zoisite.png",
+      "width": 1024,
+      "height": 640
+    },
+    "github_url": "https://github.com/Yu212/zoisite"
+  },
+  {
+    "title": "Portfolio",
+    "description": "This website.",
+    "thumbnail": {
+      "src": "/images/portfolio.png",
+      "width": 768,
+      "height": 480
+    },
+    "url": "https://yu212.dev",
+    "github_url": "https://github.com/Yu212/yu212.dev"
+  },
+  {
+    "title": "Ultimate Tic-Tac-Toe",
+    "description": "Ultimate Tic-Tac-Toe and its game AI written in Rust.",
+    "thumbnail": {
+      "src": "/images/uttt.png",
+      "width": 1024,
+      "height": 576
+    },
+    "url": "https://yu212.github.io/games/ultimate-tic-tac-toe",
+    "github_url": "https://github.com/Yu212/games"
+  },
+  {
+    "title": "PietCraft",
+    "description": "Piet interpreter running on Minecraft.",
+    "thumbnail": {
+      "src": "/images/piet_helloworld.png",
+      "width": 208,
+      "height": 208
+    },
+    "github_url": "https://github.com/Yu212/PietCraft"
+  },
+  {
+    "title": "RetranslationPlugin",
+    "description": "KunLab / 全部再翻訳されるプラグインで意思疎通しながらマインクラフト【KUN】",
+    "thumbnail": {
+      "src": "/images/retranslation.jpg",
+      "width": 640,
+      "height": 480
+    },
+    "url": "https://www.youtube.com/watch?v=ejizZhoQfyY",
+    "github_url": "https://github.com/TeamKun/RetranslationPlugin"
+  },
+  {
+    "title": "IncreaseEntityPlugin",
+    "description": "KunLab / Mobを見ると1000000匹まで増え続ける世界でサバイバル - マインクラフト【KUN】",
+    "thumbnail": {
+      "src": "/images/increase-entity.jpg",
+      "width": 640,
+      "height": 480
+    },
+    "url": "https://www.youtube.com/watch?v=zroJSLvylIc",
+    "github_url": "https://github.com/TeamKun/IncreaseEntityPlugin"
+  },
+  {
+    "title": "RevivePlugin",
+    "description": "KunLab / 死んでも蘇生できる自作MODで遊んでみた - マインクラフト【KUN】",
+    "thumbnail": {
+      "src": "/images/revive.jpg",
+      "width": 640,
+      "height": 480
+    },
+    "url": "https://www.youtube.com/watch?v=Zy7EY2gH6qY",
+    "github_url": "https://github.com/TeamKun/RevivePlugin"
+  },
+  {
+    "title": "ChatSizeChangePlugin",
+    "description": "KunLab / SNSのフォロワー数 = チャットの大きさの世界でサバイバル -マインクラフト【KUN】",
+    "thumbnail": {
+      "src": "/images/chat-size-change.jpg",
+      "width": 640,
+      "height": 480
+    },
+    "url": "https://www.youtube.com/watch?v=K9JX1bwOav4",
+    "github_url": "https://github.com/TeamKun/ChatSizeChangePlugin"
+  },
+  {
+    "title": "CommonDestinyPlugin",
+    "description": "KunLab / ２人１組で離れたら即死 協力して生き残るバトルロワイヤル 　-マインクラフト【KUN】",
+    "thumbnail": {
+      "src": "/images/common-destiny.jpg",
+      "width": 640,
+      "height": 480
+    },
+    "url": "https://www.youtube.com/watch?v=rQaA4LIqBL0",
+    "github_url": "https://github.com/TeamKun/common-destiny-plugin"
+  }
+]
