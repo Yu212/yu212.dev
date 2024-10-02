@@ -1,5 +1,8 @@
+import withExportImages from "next-export-optimize-images";
+
 /** @type {import('next').NextConfig} */
-const nextConfig = {
+const nextConfig = withExportImages({
+    output: "export",
     images: {
         remotePatterns: [
             {
@@ -9,6 +12,6 @@ const nextConfig = {
             }
         ]
     }
-};
+});
 
 export default nextConfig;

@@ -1,6 +1,6 @@
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
 import {faUser} from "@fortawesome/free-solid-svg-icons";
-import Image from "next/image";
+import Image from "next-export-optimize-images/image";
 import {faGithub, faXTwitter} from "@fortawesome/free-brands-svg-icons";
 import React from "react";
 import Section from "@/components/section";

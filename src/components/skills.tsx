@@ -2,7 +2,7 @@ import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
 import {faCode, faStar} from "@fortawesome/free-solid-svg-icons";
 import {faStar as faStarStroke} from "@fortawesome/free-regular-svg-icons";
 import Twemoji from "@/components/twemoji";
-import Image from "next/image";
+import Image from "next-export-optimize-images/image";
 import React from "react";
 import Section from "@/components/section";
 
