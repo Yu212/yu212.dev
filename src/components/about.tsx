@@ -18,7 +18,7 @@ function MediaLink({ title, url, children }: { title: string, url: string, child
 export default function About() {
   return (
     <Section id="about" icon={faUser} title="About me">
-      <div className="mt-4 sm:flex items-center">
+      <div className="mt-6 sm:flex items-center">
         <Image className="rounded-full mx-auto w-64" src="/images/mel_icon_1600.png" alt="My Icon" width={1600} height={1600}/>
         <div className="text-left m-6">
           <p className="text-2xl mb-1">Yu_212</p>

@@ -7,7 +7,7 @@ import Section from "@/components/section";
 export default function Achievements() {
   return (
     <Section id="achievements" icon={faTrophy} title="Achievements">
-      <div className="mt-4 mx-4 text-lg text-left grid md:grid-cols-[max-content_1fr] gap-1">
+      <div className="mt-6 mx-4 text-lg text-left grid md:grid-cols-[max-content_1fr] gap-1">
         {achievements.map((achievement, index) => (
           <div key={index} className="md:contents">
             <div className="flex justify-left">
@@ -19,9 +19,9 @@ export default function Achievements() {
             <div className="mx-2">
               {achievement.text}
               {achievement.numTeams &&
-                <span className="ml-1" title={`${achievement.numTeams} 人チーム`}>
-                  <Twemoji emoji="🤝" size={16}/>
-                </span>
+                <div className="inline ml-1 bg-gray-200 shadow rounded text-xs px-0.5 cursor-default whitespace-nowrap" title={`${achievement.numTeams} 人チーム`}>
+                  <Twemoji emoji="🤝" size={12}/><span className="mx-0.5">{achievement.numTeams}</span>
+                </div>
               }
             </div>
           </div>

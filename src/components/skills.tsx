@@ -23,7 +23,7 @@ function Skill({ icon, star, name }: { icon: string, star: number, name: string 
 export default function Skills() {
   return (
     <Section id="skills" icon={faCode} title="Skills">
-      <div className="mt-4 text-lg text-left items-center grid grid-cols-[max-content_min-content_max-content]">
+      <div className="mt-6 text-lg text-left items-center grid grid-cols-[max-content_min-content_max-content]">
         <Skill icon="📊" star={5} name="Competitive Programming"/>
         <div className="contents">
           <div></div>

@@ -24,8 +24,8 @@ export default function Home() {
         <Works/>
         <Skills/>
         <Achievements/>
-        <footer className="text-center py-10">
-        <p>Last updated: {new Date("2024-10-01").toLocaleDateString("ja-JP")}</p>
+        <footer className="text-center py-8">
+        <p>Last updated: {new Date("2024-10-02").toLocaleDateString("ja-JP")}</p>
         </footer>
       </main>
     </div>

@@ -13,7 +13,7 @@ export default function Works() {
 
   return (
     <Section id="works" icon={faProjectDiagram} title="Works">
-      <div className={`mt-4 relative overflow-hidden ${!showAll && "max-h-[700px]"}`}>
+      <div className={`mt-6 relative overflow-hidden ${!showAll && "max-h-[700px]"}`}>
         <div className="text-left grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 mb-16">
           {works.map((work, index) => (
             <div key={index} className="border rounded-lg overflow-hidden shadow-md w-64 h-[280px]">
