@@ -1,5 +1,16 @@
 [
   {
+    "title": "Hackceler8 2024",
+    "description": "Tooling for Hackceler8 2024.",
+    "thumbnail": {
+      "src": "/images/hackceler8.png",
+      "width": 1024,
+      "height": 640
+    },
+    "url": "https://www.youtube.com/watch?v=LEm1UEjIWpc",
+    "github_url": "https://github.com/gctf-kijitora/hackceler8-2024-public"
+  },
+  {
     "title": "Zoisite",
     "description": "A programming language designed exclusively for competitive programming.",
     "thumbnail": {

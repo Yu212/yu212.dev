@@ -1,5 +1,12 @@
 [
   {
+    "icon": "🏆",
+    "date": "2024/10",
+    "text": "Hackceler8 / Google CTF 2024 優勝",
+    "numMembers": 4,
+    "additionalMember": true
+  },
+  {
     "icon": "🏅",
     "date": "2024/05",
     "text": "SECCON Beginners CTF 2024 7位"
@@ -8,19 +15,19 @@
     "icon": "🏆",
     "date": "2024/03",
     "text": "CognitiveHack Japan 2024 総合優勝",
-    "numTeams": 2
+    "numMembers": 2
   },
   {
     "icon": "🏅",
     "date": "2024/03",
     "text": "The 2024 ICPC Asia Pacific Championship 26位",
-    "numTeams": 3
+    "numMembers": 3
   },
   {
     "icon": "🏅",
     "date": "2023/12",
     "text": "SECCON CTF 2023 Finals 5位",
-    "numTeams": 4
+    "numMembers": 4
   },
   {
     "icon": "🏅",
@@ -36,25 +43,25 @@
     "icon": "🏅",
     "date": "2023/02",
     "text": "SECCON CTF 2022 Finals 12位",
-    "numTeams": 2
+    "numMembers": 2
   },
   {
     "icon": "🏆",
     "date": "2022/11",
     "text": "KOSENセキュリティコンテスト2022 優勝",
-    "numTeams": 4
+    "numMembers": 4
   },
   {
     "icon": "🏅",
     "date": "2022/11",
     "text": "パソコン甲子園2022 第7位",
-    "numTeams": 2
+    "numMembers": 2
   },
   {
     "icon": "🥈",
     "date": "2022/10",
     "text": "第33回全国高等専門学校プログラミングコンテスト 準優勝",
-    "numTeams": 3
+    "numMembers": 3
   },
   {
     "icon": "🥈",
@@ -75,7 +82,7 @@
     "icon": "🏆",
     "date": "2021/10",
     "text": "第32回全国高等専門学校プログラミングコンテスト 優勝",
-    "numTeams": 3
+    "numMembers": 3
   },
   {
     "icon": "🏅",

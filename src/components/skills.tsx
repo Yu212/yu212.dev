@@ -29,8 +29,8 @@ export default function Skills() {
           <div></div>
           <span className="mr-2">AtCoder/Algo:</span>
           <div className="flex items-baseline">
-            <Image className="w-6 h-6" src="/images/atcoder/user-orange-1.png" alt="Rating Icon" width={77} height={100}/>
-            <span className="text-[#ff8000]">2483</span>
+            <Image className="w-6 h-6" src="/images/atcoder/user-orange-2.png" alt="Rating Icon" width={77} height={100}/>
+            <span className="text-[#ff8000]">2500</span>
           </div>
         </div>
         <div className="contents">

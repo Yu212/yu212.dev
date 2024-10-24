@@ -18,9 +18,9 @@ export default function Achievements() {
             </div>
             <div className="mx-2">
               {achievement.text}
-              {achievement.numTeams &&
-                <div className="inline ml-1 bg-gray-200 shadow rounded text-xs px-0.5 cursor-default whitespace-nowrap" title={`${achievement.numTeams} 人チーム`}>
-                  <Twemoji emoji="🤝" size={12}/><span className="mx-0.5">{achievement.numTeams}</span>
+              {achievement.numMembers &&
+                <div className="inline ml-1 bg-gray-200 shadow rounded text-xs px-0.5 cursor-default whitespace-nowrap" title={`${achievement.numMembers} 人チーム`}>
+                  <Twemoji emoji="🤝" size={12}/><span className="mx-0.5">{achievement.numMembers}{achievement.additionalMember && "+"}</span>
                 </div>
               }
             </div>
