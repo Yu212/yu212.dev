@@ -53,6 +53,27 @@
     "github_url": "https://github.com/Yu212/PietCraft"
   },
   {
+    "title": "security-camp",
+    "description": "セキュリティキャンプ全国大会で実装した HomNAND",
+    "thumbnail": {
+      "src": "/images/noimage.png",
+      "width": 208,
+      "height": 208
+    },
+    "github_url": "https://github.com/Yu212/security-camp"
+  },
+  {
+    "title": "procon33_comp_yuge",
+    "description": "第33回高専プロコン競技部門のソルバ",
+    "thumbnail": {
+      "src": "/images/noimage.png",
+      "width": 208,
+      "height": 208
+    },
+    "url": "https://yu212.hatenablog.com/entry/2022/10/19/215545",
+    "github_url": "https://github.com/Yu212/procon33_comp_yuge"
+  },
+  {
     "title": "RetranslationPlugin",
     "description": "KunLab / 全部再翻訳されるプラグインで意思疎通しながらマインクラフト【KUN】",
     "thumbnail": {

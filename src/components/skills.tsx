@@ -37,14 +37,14 @@ export default function Skills() {
           <div></div>
           <span className="mr-2">AtCoder/Heur:</span>
           <div className="flex items-baseline">
-            <Image className="w-6 h-6" src="/images/atcoder/user-orange-1.png" alt="Rating Icon" width={77} height={100}/>
-            <span className="text-[#ff8000]">2436</span>
+            <Image className="w-6 h-6" src="/images/atcoder/user-yellow-4.png" alt="Rating Icon" width={77} height={100}/>
+            <span className="text-[#C0C000]">2388</span>
           </div>
         </div>
-        <Skill icon="🚩" star={4} name="CTF"/>
+        <Skill icon="🚩" star={5} name="CTF"/>
         <Skill icon="☕" star={4} name="Java"/>
         <Skill icon="🐍" star={3} name="Python"/>
-        <Skill icon="🦀" star={2} name="Rust"/>
+        <Skill icon="🦀" star={3} name="Rust"/>
       </div>
     </Section>
   )

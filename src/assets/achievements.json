@@ -1,5 +1,11 @@
 [
   {
+    "icon": "🏅",
+    "date": "2024/12",
+    "text": "The 2024 ICPC Asia Yokohama Regional Contest 13位",
+    "numMembers": 3
+  },
+  {
     "icon": "🏆",
     "date": "2024/10",
     "text": "Hackceler8 / Google CTF 2024 優勝",
@@ -28,6 +34,12 @@
     "date": "2023/12",
     "text": "SECCON CTF 2023 Finals 5位",
     "numMembers": 4
+  },
+  {
+    "icon": "🏅",
+    "date": "2023/11",
+    "text": "The 2023 ICPC Asia Yokohama Regional Contest 9位",
+    "numMembers": 3
   },
   {
     "icon": "🏅",
