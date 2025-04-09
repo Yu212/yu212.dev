@@ -29,8 +29,8 @@ export default function Skills() {
           <div></div>
           <span className="mr-2">AtCoder/Algo:</span>
           <div className="flex items-baseline">
-            <Image className="w-6 h-6" src="/images/atcoder/user-orange-2.png" alt="Rating Icon" width={77} height={100}/>
-            <span className="text-[#ff8000]">2500</span>
+            <Image className="w-6 h-6" src="/images/atcoder/user-orange-1.png" alt="Rating Icon" width={77} height={100}/>
+            <span className="text-[#ff8000]">2479</span>
           </div>
         </div>
         <div className="contents">
@@ -38,12 +38,13 @@ export default function Skills() {
           <span className="mr-2">AtCoder/Heur:</span>
           <div className="flex items-baseline">
             <Image className="w-6 h-6" src="/images/atcoder/user-yellow-4.png" alt="Rating Icon" width={77} height={100}/>
-            <span className="text-[#C0C000]">2388</span>
+            <span className="text-[#C0C000]">2387</span>
           </div>
         </div>
         <Skill icon="🚩" star={5} name="CTF"/>
         <Skill icon="☕" star={4} name="Java"/>
-        <Skill icon="🐍" star={3} name="Python"/>
+        <Skill icon="🐍" star={4} name="Python"/>
+        <Skill icon="⚙" star={3} name="C++"/>
         <Skill icon="🦀" star={3} name="Rust"/>
       </div>
     </Section>

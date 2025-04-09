@@ -1,5 +1,16 @@
 [
   {
+    "icon": "🥉",
+    "date": "2025/4",
+    "text": "Dreamhack Invitational 2025 8位"
+  },
+  {
+    "icon": "🏆",
+    "date": "2025/03",
+    "text": "CognitiveHack Japan 2025 総合優勝",
+    "numMembers": 2
+  },
+  {
     "icon": "🏅",
     "date": "2024/12",
     "text": "The 2024 ICPC Asia Yokohama Regional Contest 13位",
