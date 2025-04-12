@@ -24,7 +24,7 @@ export default function About() {
           <p className="text-2xl mb-1">Yu_212</p>
           <div className="text-lg">
             <p>University of Tsukuba, coins23</p>
-            <p>Age: 19</p>
+            <p>Age: 20</p>
             <p>Birthday: 2005年 2月 12日</p>
           </div>
           <div className="mt-4 w-fit">
