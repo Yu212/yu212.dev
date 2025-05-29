@@ -1,7 +1,7 @@
 [
   {
     "icon": "🥉",
-    "date": "2025/4",
+    "date": "2025/04",
     "text": "Dreamhack Invitational 2025 8位"
   },
   {
@@ -12,6 +12,12 @@
   },
   {
     "icon": "🏅",
+    "date": "2024/03",
+    "text": "The 2025 ICPC Asia Pacific Championship 29位",
+    "numMembers": 3
+  },
+  {
+    "icon": "🏅",
     "date": "2024/12",
     "text": "The 2024 ICPC Asia Yokohama Regional Contest 13位",
     "numMembers": 3
@@ -19,7 +25,7 @@
   {
     "icon": "🏆",
     "date": "2024/10",
-    "text": "Hackceler8 / Google CTF 2024 優勝",
+    "text": "Hackceler8 / Google CTF 2024 Finals event 優勝",
     "numMembers": 4,
     "additionalMember": true
   },
@@ -43,7 +49,7 @@
   {
     "icon": "🏅",
     "date": "2023/12",
-    "text": "SECCON CTF 2023 Finals 5位",
+    "text": "SECCON CTF 2023 Domestic Finals 5位",
     "numMembers": 4
   },
   {
@@ -65,7 +71,7 @@
   {
     "icon": "🏅",
     "date": "2023/02",
-    "text": "SECCON CTF 2022 Finals 12位",
+    "text": "SECCON CTF 2022 Domestic Finals 12位",
     "numMembers": 2
   },
   {
