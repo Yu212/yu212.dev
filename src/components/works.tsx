@@ -8,6 +8,18 @@ import {faGithub} from "@fortawesome/free-brands-svg-icons";
 import works from "@/assets/works.json"
 import Section from "@/components/section";
 
+type Work = {
+  title: string
+  description: string
+  thumbnail: {
+    src: string
+    width: number
+    height: number
+  }
+  url?: string
+  github_url?: string
+}
+
 export default function Works() {
   const [showAll, setShowAll] = React.useState(false);
 
@@ -15,7 +27,7 @@ export default function Works() {
     <Section id="works" icon={faProjectDiagram} title="Works">
       <div className={`mt-6 relative overflow-hidden ${!showAll && "max-h-[700px]"}`}>
         <div className="text-left grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 mb-16">
-          {works.map((work, index) => (
+          {(works as Work[]).map((work, index) => (
             <div key={index} className="border rounded-lg overflow-hidden shadow-md w-64 h-[280px]">
               <a className="relative" href={work.url} target="_blank" rel="noopener noreferrer">
                 <Image width={work.thumbnail.width} height={work.thumbnail.height} src={work.thumbnail.src} alt={work.title} className="h-40 w-full object-cover"/>

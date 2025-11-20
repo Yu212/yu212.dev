@@ -4,11 +4,19 @@ import Twemoji from "@/components/twemoji";
 import achievements from "@/assets/achievements.json"
 import Section from "@/components/section";
 
+type Achievement = {
+  icon: string
+  date: string
+  text: string
+  numMembers?: number
+  additionalMember?: boolean
+}
+
 export default function Achievements() {
   return (
     <Section id="achievements" icon={faTrophy} title="Achievements">
       <div className="mt-6 mx-4 text-lg text-left grid md:grid-cols-[max-content_1fr] gap-1">
-        {achievements.map((achievement, index) => (
+        {(achievements as Achievement[]).map((achievement, index) => (
           <div key={index} className="md:contents">
             <div className="flex justify-left">
               <div className="mx-2 w-[20px] ">
