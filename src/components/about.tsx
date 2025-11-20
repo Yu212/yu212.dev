@@ -21,7 +21,7 @@ export default function About() {
       <div className="mt-6 sm:flex items-center">
         <Image className="rounded-full mx-auto w-64" src="/images/mel_icon_1600.png" alt="My Icon" width={1600} height={1600}/>
         <div className="text-left m-6">
-          <p className="text-2xl mb-1">Yu_212</p>
+          <p className="text-3xl mb-1">Yu_212</p>
           <div className="text-lg">
             <p>University of Tsukuba, coins23</p>
             <p>Age: 20</p>

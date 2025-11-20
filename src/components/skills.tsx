@@ -9,12 +9,12 @@ import Section from "@/components/section";
 function Skill({ icon, star, name }: { icon: string, star: number, name: string }) {
   return (
     <div className="contents">
-      <Twemoji emoji={icon} className="mx-2"/>
-      <span className="col-span-2">
+      <Twemoji emoji={icon} className="mx-3" size={28}/>
+      <span className="col-span-2 text-xl">
         {Array.from({ length: 5 }, (_, index) => (
-          <FontAwesomeIcon key={index} icon={index < star ? faStar : faStarStroke} size="xs"/>
+          <FontAwesomeIcon key={index} icon={index < star ? faStar : faStarStroke} size="sm"/>
         ))}
-        <span className="ml-2">{name}</span>
+        <span className="ml-3">{name}</span>
       </span>
     </div>
   )
@@ -23,22 +23,22 @@ function Skill({ icon, star, name }: { icon: string, star: number, name: string 
 export default function Skills() {
   return (
     <Section id="skills" icon={faCode} title="Skills">
-      <div className="mt-6 text-lg text-left items-center grid grid-cols-[max-content_min-content_max-content]">
+      <div className="mt-8 text-xl text-left items-center grid grid-cols-[max-content_min-content_max-content] gap-y-1 leading-snug">
         <Skill icon="📊" star={5} name="Competitive Programming"/>
         <div className="contents">
           <div></div>
-          <span className="mr-2">AtCoder/Algo:</span>
-          <div className="flex items-baseline">
+          <span className="mr-2 text-lg leading-snug">AtCoder/Algo:</span>
+          <div className="flex items-baseline gap-1 leading-snug">
             <Image className="w-6 h-6" src="/images/atcoder/user-orange-1.png" alt="Rating Icon" width={77} height={100}/>
-            <span className="text-[#ff8000]">2479</span>
+            <span className="text-[#ff8000] text-xl">2462</span>
           </div>
         </div>
         <div className="contents">
           <div></div>
-          <span className="mr-2">AtCoder/Heur:</span>
-          <div className="flex items-baseline">
+          <span className="mr-2 text-lg leading-snug">AtCoder/Heur:</span>
+          <div className="flex items-baseline gap-1 leading-snug">
             <Image className="w-6 h-6" src="/images/atcoder/user-yellow-4.png" alt="Rating Icon" width={77} height={100}/>
-            <span className="text-[#C0C000]">2387</span>
+            <span className="text-[#C0C000] text-xl">2308</span>
           </div>
         </div>
         <Skill icon="🚩" star={5} name="CTF"/>

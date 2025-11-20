@@ -2,6 +2,7 @@ import React from "react";
 import Works from "@/components/works";
 import About from "@/components/about";
 import Skills from "@/components/skills";
+import MyChallenges from "@/components/my-challenges";
 import Achievements from "@/components/achievements";
 
 export default function Home() {
@@ -12,8 +13,8 @@ export default function Home() {
       </div>
       <nav className="sticky top-0 bg-white shadow-md z-10 w-full">
         <div className="mx-auto px-4 max-w-3xl flex">
-          {["About", "Works", "Skills", "Achievements"].map((section, index) => (
-            <a key={index} className="flex-1 text-center py-2 transition hover:text-[#6292e9]" href={`#${section.toLowerCase()}`}>
+          {["About", "Works", "Skills", "Achievements", "My Challenges"].map((section, index) => (
+            <a key={index} className="flex-1 text-center py-2 transition hover:text-[#6292e9]" href={`#${section.toLowerCase().replace(" ", "-")}`}>
               {section}
             </a>
           ))}
@@ -24,8 +25,9 @@ export default function Home() {
         <Works/>
         <Skills/>
         <Achievements/>
+        <MyChallenges/>
         <footer className="text-center py-8">
-        <p>Last updated: {new Date("2025-04-09").toLocaleDateString("ja-JP")}</p>
+        <p>Last updated: {new Date("2025-11-20").toLocaleDateString("ja-JP")}</p>
         </footer>
       </main>
     </div>

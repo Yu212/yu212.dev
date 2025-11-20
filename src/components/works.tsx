@@ -26,9 +26,9 @@ function WorkCard({ work }: { work: Work }) {
       <a className="relative" href={work.url} target="_blank" rel="noopener noreferrer">
         <Image width={work.thumbnail.width} height={work.thumbnail.height} src={work.thumbnail.src} alt={work.title} className="h-40 w-full object-cover"/>
         {work.url &&
-            <div className="absolute top-0 right-1">
-                <FontAwesomeIcon icon={faUpRightFromSquare} size="sm" color="white"/>
-            </div>
+          <div className="absolute top-0 right-1">
+            <FontAwesomeIcon icon={faUpRightFromSquare} size="sm" color="white"/>
+          </div>
         }
       </a>
       <div className="p-3">
@@ -39,10 +39,9 @@ function WorkCard({ work }: { work: Work }) {
             </a>
           </h3>
           {work.github_url &&
-              <a className="rounded-full h-6 w-6 flex items-center justify-center transition hover:bg-gray-300"
-                 href={work.github_url} target="_blank" rel="noopener noreferrer">
-                  <FontAwesomeIcon icon={faGithub} size="lg"/>
-              </a>
+            <a className="rounded-full h-6 w-6 flex items-center justify-center transition hover:bg-gray-300" href={work.github_url} target="_blank" rel="noopener noreferrer">
+              <FontAwesomeIcon icon={faGithub} size="lg"/>
+            </a>
           }
         </div>
         <p className="text-sm mt-2 text-gray-600">{work.description}</p>

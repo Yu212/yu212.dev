@@ -1,0 +1,140 @@
+[
+  {
+    "contest": "AlpacaHack Round 12 (Crypto)",
+    "competition_type": "CTF",
+    "url": "https://alpacahack.com/ctfs/round-12",
+    "challenges": [
+      {
+        "title": "RSARSARSARSARSARSA",
+        "category": "crypto",
+        "difficulty": 2,
+        "url": "https://alpacahack.com/ctfs/round-12/challenges/rsarsarsarsarsarsa"
+      },
+      {
+        "title": "OTEC",
+        "category": "crypto",
+        "difficulty": 3,
+        "url": "https://alpacahack.com/ctfs/round-12/challenges/otec"
+      },
+      {
+        "title": "Flag Sharing",
+        "category": "crypto",
+        "difficulty": 5,
+        "url": "https://alpacahack.com/ctfs/round-12/challenges/flag-sharing"
+      },
+      {
+        "title": "Zero-sum game",
+        "category": "crypto",
+        "difficulty": 8,
+        "url": "https://alpacahack.com/ctfs/round-12/challenges/zero-sum-game"
+      }
+    ]
+  },
+  {
+    "contest": "SECCON Beginners CTF 2025",
+    "competition_type": "CTF",
+    "url": "https://github.com/SECCON/2025_beginnersctf_ctf",
+    "challenges": [
+      {
+        "title": "01-Translator",
+        "category": "crypto",
+        "difficulty": 1,
+        "url": "https://github.com/SECCON/2025_beginnersctf_ctf/tree/main/crypto/01-translator"
+      },
+      {
+        "title": "Elliptic4b",
+        "category": "crypto",
+        "difficulty": 2,
+        "url": "https://github.com/SECCON/2025_beginnersctf_ctf/tree/main/crypto/elliptic4b"
+      },
+      {
+        "title": "Golden Ticket",
+        "category": "crypto",
+        "difficulty": 5,
+        "url": "https://github.com/SECCON/2025_beginnersctf_ctf/tree/main/crypto/golden-ticket"
+      }
+    ]
+  },
+  {
+    "contest": "Dreamhack Wargame",
+    "competition_type": "CTF",
+    "url": "https://dreamhack.io/wargame",
+    "challenges": [
+      {
+        "title": "No No Padding Oracle",
+        "category": "crypto",
+        "difficulty": 5,
+        "url": "https://dreamhack.io/wargame/challenges/1960"
+      }
+    ]
+  },
+  {
+    "contest": "筑波大学プログラミングコンテスト2023",
+    "competition_type": "Competitive Programming",
+    "url": "https://mofecoder.com/contests/itfpc2023",
+    "challenges": [
+      {
+        "title": "Chase",
+        "category": "competitive_programming",
+        "difficulty": 6,
+        "url": "https://mofecoder.com/contests/itfpc2023/tasks/itfpc2023_h"
+      }
+    ]
+  },
+  {
+    "contest": "筑波大学プログラミングコンテスト2024",
+    "competition_type": "Competitive Programming",
+    "url": "https://mofecoder.com/contests/itfpc2024",
+    "challenges": [
+      {
+        "title": "Food Fight",
+        "category": "competitive_programming",
+        "difficulty": 4,
+        "url": "https://mofecoder.com/contests/itfpc2024/tasks/itfpc2024_g"
+      },
+      {
+        "title": "Hyper Nim Machine",
+        "category": "competitive_programming",
+        "difficulty": 4,
+        "url": "https://mofecoder.com/contests/itfpc2024/tasks/itfpc2024_h"
+      },
+      {
+        "title": "Matrix on SegmentTree",
+        "category": "competitive_programming",
+        "difficulty": 6,
+        "url": "https://mofecoder.com/contests/itfpc2024/tasks/itfpc2024_l"
+      },
+      {
+        "title": "Set Seed Speedrun",
+        "category": "competitive_programming",
+        "difficulty": 8,
+        "url": "https://mofecoder.com/contests/itfpc2024/tasks/itfpc2024_n"
+      },
+      {
+        "title": "ITF. Puzzle Contest",
+        "category": "competitive_programming",
+        "difficulty": 9,
+        "url": "https://mofecoder.com/contests/itfpc2024/tasks/itfpc2024_p"
+      }
+    ]
+  },
+  {
+    "contest": "筑波大学プログラミングコンテスト2025",
+    "competition_type": "Competitive Programming",
+    "url": "https://mofecoder.com/contests/itfpc2025",
+    "challenges": [
+      {
+        "title": "Approximation",
+        "category": "competitive_programming",
+        "difficulty": 5,
+        "url": "https://mofecoder.com/contests/itfpc2025/tasks/itfpc2025_g"
+      },
+      {
+        "title": "Mission",
+        "category": "competitive_programming",
+        "difficulty": 8,
+        "url": "https://mofecoder.com/contests/itfpc2025/tasks/itfpc2025_h"
+      }
+    ]
+  }
+]
