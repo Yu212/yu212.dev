@@ -20,6 +20,37 @@ type Work = {
   github_url?: string
 }
 
+function WorkCard({ work }: { work: Work }) {
+  return (
+    <div className="border rounded-lg overflow-hidden shadow-sm w-64 h-[280px] hover:-translate-y-0.5 transition hover:shadow-md">
+      <a className="relative" href={work.url} target="_blank" rel="noopener noreferrer">
+        <Image width={work.thumbnail.width} height={work.thumbnail.height} src={work.thumbnail.src} alt={work.title} className="h-40 w-full object-cover"/>
+        {work.url &&
+            <div className="absolute top-0 right-1">
+                <FontAwesomeIcon icon={faUpRightFromSquare} size="sm" color="white"/>
+            </div>
+        }
+      </a>
+      <div className="p-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold">
+            <a className="relative" href={work.url} target="_blank" rel="noopener noreferrer">
+              {work.title}
+            </a>
+          </h3>
+          {work.github_url &&
+              <a className="rounded-full h-6 w-6 flex items-center justify-center transition hover:bg-gray-300"
+                 href={work.github_url} target="_blank" rel="noopener noreferrer">
+                  <FontAwesomeIcon icon={faGithub} size="lg"/>
+              </a>
+          }
+        </div>
+        <p className="text-sm mt-2 text-gray-600">{work.description}</p>
+      </div>
+    </div>
+  )
+}
+
 export default function Works() {
   const [showAll, setShowAll] = React.useState(false);
 
@@ -28,32 +59,7 @@ export default function Works() {
       <div className={`mt-6 relative overflow-hidden ${!showAll && "max-h-[700px]"}`}>
         <div className="text-left grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 mb-16">
           {(works as Work[]).map((work, index) => (
-            <div key={index} className="border rounded-lg overflow-hidden shadow-md w-64 h-[280px]">
-              <a className="relative" href={work.url} target="_blank" rel="noopener noreferrer">
-                <Image width={work.thumbnail.width} height={work.thumbnail.height} src={work.thumbnail.src} alt={work.title} className="h-40 w-full object-cover"/>
-                {work.url &&
-                  <div className="absolute top-0 right-1">
-                    <FontAwesomeIcon icon={faUpRightFromSquare} size="sm" color="white"/>
-                  </div>
-                }
-              </a>
-              <div className="p-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold">
-                    <a className="relative" href={work.url} target="_blank" rel="noopener noreferrer">
-                      {work.title}
-                    </a>
-                  </h3>
-                  {work.github_url &&
-                    <a className="rounded-full h-6 w-6 flex items-center justify-center transition hover:bg-gray-300"
-                         href={work.github_url} target="_blank" rel="noopener noreferrer">
-                          <FontAwesomeIcon icon={faGithub} size="lg"/>
-                      </a>
-                  }
-                </div>
-                <p className="text-sm mt-2 text-gray-600">{work.description}</p>
-              </div>
-            </div>
+            <WorkCard key={index} work={work} />
           ))}
         </div>
         <div className="absolute bottom-0 w-full">
