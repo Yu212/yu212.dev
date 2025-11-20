@@ -25,7 +25,7 @@ export default function About() {
           <div className="text-lg">
             <p>University of Tsukuba, coins23</p>
             <p>Age: 20</p>
-            <p>Birthday: 2005年 2月 12日</p>
+            <p>Birthday: 2005-02-12</p>
           </div>
           <div className="mt-4 w-fit">
             <MediaLink title="X" url="https://x.com/Yu_212_MC">
