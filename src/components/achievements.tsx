@@ -16,7 +16,7 @@ export default function Achievements() {
   return (
     <Section id="achievements" icon={faTrophy} title="Achievements">
       <div className="mt-6 mx-4 w-full text-lg text-left space-y-6 px-4">
-        <div className="grid md:grid-cols-[max-content_1fr] gap-1 rounded-xl bg-white shadow-md p-6">
+        <div className="grid md:grid-cols-[max-content_1fr] gap-1 rounded-xl bg-white shadow-md py-6 px-3 md:px-6">
           {(achievements as Achievement[]).map((achievement, index) => (
             <div key={index} className="md:contents">
               <div className="flex justify-left">

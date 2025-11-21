@@ -12,7 +12,7 @@ export default function Home() {
         <h1 className="text-4xl md:text-6xl text-white font-bold">Yu_212&apos;s Portfolio</h1>
       </div>
       <nav className="sticky top-0 bg-white shadow-md z-10 w-full">
-        <div className="mx-auto px-4 max-w-3xl flex">
+        <div className="mx-auto px-4 max-w-3xl flex items-center">
           {["About", "Works", "Skills", "Achievements", "My Challenges"].map((section, index) => (
             <a key={index} className="flex-1 text-center py-2 transition hover:text-[#6292e9]" href={`#${section.toLowerCase().replace(" ", "-")}`}>
               {section}
