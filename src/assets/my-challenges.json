@@ -56,6 +56,19 @@
     ]
   },
   {
+    "contest": "Daily AlpacaHack",
+    "competition_type": "CTF",
+    "url": "https://alpacahack.com/daily",
+    "challenges": [
+      {
+        "title": "Fully Padded RSA",
+        "category": "crypto",
+        "difficulty": 3,
+        "url": "https://alpacahack.com/daily/challenges/fully-padded-rsa"
+      }
+    ]
+  },
+  {
     "contest": "Dreamhack Wargame",
     "competition_type": "CTF",
     "url": "https://dreamhack.io/wargame",
