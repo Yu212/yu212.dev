@@ -1,5 +1,15 @@
 [
   {
+    "title": "Snake Game AI",
+    "description": "A Python snake game solver and visualizer.",
+    "thumbnail": {
+      "src": "/images/snake_game.png",
+      "width": 640,
+      "height": 384
+    },
+    "github_url": "https://github.com/yu212/snake_game"
+  },
+  {
     "title": "Hackceler8 2024",
     "description": "Tooling for Hackceler8 2024.",
     "thumbnail": {
