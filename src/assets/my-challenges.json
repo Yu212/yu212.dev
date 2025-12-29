@@ -1,5 +1,24 @@
 [
   {
+    "contest": "BlackHat MEA CTF Final 2025",
+    "competition_type": "CTF",
+    "url": "https://ctftime.org/event/2877/",
+    "challenges": [
+      {
+        "title": "doloR Sit Amet",
+        "category": "crypto",
+        "difficulty": 5,
+        "url": "https://alpacahack.com/challenges/dolor-sit-amet"
+      },
+      {
+        "title": "Noisy Channel",
+        "category": "crypto",
+        "difficulty": 6,
+        "url": "https://alpacahack.com/challenges/noisy-channel"
+      }
+    ]
+  },
+  {
     "contest": "AlpacaHack Round 12 (Crypto)",
     "competition_type": "CTF",
     "url": "https://alpacahack.com/ctfs/round-12",
@@ -65,6 +84,19 @@
         "category": "crypto",
         "difficulty": 3,
         "url": "https://alpacahack.com/daily/challenges/fully-padded-rsa"
+      }
+    ]
+  },
+  {
+    "contest": "AlpacaHack",
+    "competition_type": "CTF",
+    "url": "https://alpacahack.com",
+    "challenges": [
+      {
+        "title": "doloR Sit Amet Revenge",
+        "category": "crypto",
+        "difficulty": 7,
+        "url": "https://alpacahack.com/challenges/dolor-sit-amet-revenge"
       }
     ]
   },
