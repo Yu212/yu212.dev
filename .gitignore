@@ -15,6 +15,7 @@
 
 # production
 /build
+content/writeups/.generated/
 
 # misc
 .DS_Store

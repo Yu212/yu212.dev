@@ -1,0 +1,169 @@
+.writeup {
+  line-height: 1.75;
+}
+
+.writeup h1, .writeup h2, .writeup h3, .writeup h4 {
+  color: #0f172a;
+  font-weight: 600;
+  margin: 1.4em 0 0.6em;
+}
+
+.writeup p {
+  margin: 0.8em 0;
+}
+
+.writeup a {
+  color: #6292e9;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.writeup ul, .writeup ol {
+  padding-left: 1.4em;
+  margin: 0.8em 0;
+  list-style-position: outside;
+}
+
+.writeup ul {
+  list-style-type: disc;
+}
+
+.writeup ol {
+  list-style-type: decimal;
+}
+
+.writeup li {
+  margin: 0.35em 0;
+}
+
+.writeup blockquote {
+  border-left: 3px solid #95caee;
+  padding-left: 1em;
+  color: #475569;
+  margin: 1em 0;
+}
+
+.writeup pre {
+  background: #2b2b2b;
+  color: #f8f8f2;
+  padding: 1em;
+  border-radius: 0.75em;
+  overflow-x: auto;
+  margin: 1em 0;
+  max-width: 100%;
+}
+
+.writeup figure {
+  margin: 1em 0;
+  overflow-x: auto;
+}
+
+.writeup figure pre {
+  margin: 0;
+}
+
+.writeup-code-block {
+  position: relative;
+}
+
+.writeup-code-copy {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  opacity: 0;
+  pointer-events: none;
+  padding: 0.2rem;
+  border: none;
+  background: transparent;
+  color: #f8fafc;
+  cursor: pointer;
+}
+
+.writeup-code-block:hover .writeup-code-copy, .writeup-code-block:focus-within .writeup-code-copy {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.writeup-code-copy:hover {
+  color: #93c5fd;
+}
+
+.writeup-code-copy:focus-visible {
+  outline: 2px solid rgba(99, 133, 255, 0.8);
+  outline-offset: 2px;
+}
+
+.writeup-code-copy svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  display: block;
+}
+
+.writeup pre code[data-line-numbers] {
+  counter-reset: line;
+}
+
+.writeup pre code[data-line-numbers] > span[data-line] {
+  display: block;
+  padding-left: 3em;
+  position: relative;
+}
+
+.writeup pre code[data-line-numbers] > span[data-line]::before {
+  counter-increment: line;
+  content: counter(line);
+  position: absolute;
+  left: 0;
+  width: 2.2em;
+  text-align: right;
+  color: rgba(248, 248, 242, 0.4);
+}
+
+.writeup code {
+  background: #e2e8f0;
+  color: #0f172a;
+  padding: 0.1em 0.3em;
+  border-radius: 0.35em;
+  font-size: 0.92em;
+}
+
+.writeup pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+}
+
+.writeup table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1em 0;
+}
+
+.writeup th, .writeup td {
+  border: 1px solid #e2e8f0;
+  padding: 0.5em 0.75em;
+  text-align: left;
+}
+
+.writeup hr {
+  border: none;
+  border-top: 1px solid #e2e8f0;
+  margin: 1.5em 0;
+}
+
+.writeup .katex-display {
+  overflow-x: auto;
+  padding: 0.5em 0;
+}
+
+.writeup-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2em 0.75em;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #475569;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
