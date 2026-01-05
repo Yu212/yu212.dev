@@ -1,10 +1,11 @@
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
-import {faCode, faStar} from "@fortawesome/free-solid-svg-icons";
+import {faArrowRight, faCode, faStar} from "@fortawesome/free-solid-svg-icons";
 import {faStar as faStarStroke} from "@fortawesome/free-regular-svg-icons";
 import Twemoji from "@/components/twemoji";
 import Image from "next-export-optimize-images/image";
 import React from "react";
 import Section from "@/components/section";
+import Link from "next/link";
 
 function Skill({ icon, star, name }: { icon: string, star: number, name: string }) {
   return (
@@ -42,6 +43,13 @@ export default function Skills() {
           </div>
         </div>
         <Skill icon="🚩" star={5} name="CTF"/>
+        <div className="contents">
+          <div></div>
+          <Link href="/writeups" className="col-span-2 md:text-lg inline-flex w-fit items-center gap-2">
+            <span className="underline underline-offset-4">Read writeups</span>
+            <FontAwesomeIcon icon={faArrowRight} className="text-sm"/>
+          </Link>
+        </div>
         <Skill icon="☕" star={4} name="Java"/>
         <Skill icon="🐍" star={4} name="Python"/>
         <Skill icon="⚙" star={3} name="C++"/>
