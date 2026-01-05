@@ -3,19 +3,22 @@
     "icon": "🥈",
     "date": "2025/11",
     "text": "International Cybersecurity Challenge TOKYO 2025 2位",
-    "numMembers": 17
+    "team_name": "Team Asia",
+    "num_members": 17
   },
   {
     "icon": "🏅",
     "date": "2025/10",
     "text": "Google Code Golf Championship 5位",
-    "numMembers": 4
+    "team_name": "HIMAGINE THE FUTURE.",
+    "num_members": 4
   },
   {
     "icon": "🥈",
     "date": "2025/06",
     "text": "Midnight Code Cup 2025 2位",
-    "numMembers": 3
+    "team_name": "GoodBye2023",
+    "num_members": 3
   },
   {
     "icon": "🥉",
@@ -26,26 +29,30 @@
     "icon": "🏆",
     "date": "2025/03",
     "text": "CognitiveHack Japan 2025 総合優勝",
-    "numMembers": 2
+    "team_name": "I_do_understand_the_danger_of_UAF_and_really_want_to_free",
+    "num_members": 2
   },
   {
     "icon": "🏅",
     "date": "2025/03",
     "text": "The 2025 ICPC Asia Pacific Championship 29位",
-    "numMembers": 3
+    "team_name": "I_do_understand_the_danger_of_overflow_and_really_want_to_use_32bit_integer",
+    "num_members": 3
   },
   {
     "icon": "🏅",
     "date": "2024/12",
     "text": "The 2024 ICPC Asia Yokohama Regional Contest 13位",
-    "numMembers": 3
+    "team_name": "I_do_understand_the_danger_of_overflow_and_really_want_to_use_32bit_integer",
+    "num_members": 3
   },
   {
     "icon": "🏆",
     "date": "2024/10",
     "text": "Hackceler8 / Google CTF 2024 Finals event 優勝",
-    "numMembers": 4,
-    "additionalMember": true
+    "team_name": "Kijitora",
+    "num_members": 4,
+    "additional_member": true
   },
   {
     "icon": "🏅",
@@ -56,25 +63,29 @@
     "icon": "🏆",
     "date": "2024/03",
     "text": "CognitiveHack Japan 2024 総合優勝",
-    "numMembers": 2
+    "team_name": "Hello2024",
+    "num_members": 2
   },
   {
     "icon": "🏅",
     "date": "2024/03",
     "text": "The 2024 ICPC Asia Pacific Championship 26位",
-    "numMembers": 3
+    "team_name": "GoodBye2023",
+    "num_members": 3
   },
   {
     "icon": "🏅",
     "date": "2023/12",
     "text": "SECCON CTF 2023 Domestic Finals 5位",
-    "numMembers": 4
+    "team_name": "TPC",
+    "num_members": 4
   },
   {
     "icon": "🏅",
     "date": "2023/11",
     "text": "The 2023 ICPC Asia Yokohama Regional Contest 9位",
-    "numMembers": 3
+    "team_name": "GoodBye2023",
+    "num_members": 3
   },
   {
     "icon": "🏅",
@@ -90,25 +101,29 @@
     "icon": "🏅",
     "date": "2023/02",
     "text": "SECCON CTF 2022 Domestic Finals 12位",
-    "numMembers": 2
+    "team_name": "catapult",
+    "num_members": 2
   },
   {
     "icon": "🏆",
     "date": "2022/11",
     "text": "KOSENセキュリティコンテスト2022 優勝",
-    "numMembers": 4
+    "team_name": "カタパルト",
+    "num_members": 4
   },
   {
     "icon": "🏅",
     "date": "2022/11",
     "text": "パソコン甲子園2022 第7位",
-    "numMembers": 2
+    "team_name": "ぬるぽ",
+    "num_members": 2
   },
   {
     "icon": "🥈",
     "date": "2022/10",
-    "text": "第33回全国高等専門学校プログラミングコンテスト 準優勝",
-    "numMembers": 3
+    "text": "第33回全国高等専門学校プログラミングコンテスト競技部門 準優勝",
+    "team_name": "みなかた",
+    "num_members": 3
   },
   {
     "icon": "🥈",
@@ -128,8 +143,9 @@
   {
     "icon": "🏆",
     "date": "2021/10",
-    "text": "第32回全国高等専門学校プログラミングコンテスト 優勝",
-    "numMembers": 3
+    "text": "第32回全国高等専門学校プログラミングコンテスト競技部門 優勝",
+    "team_name": "迅速果断",
+    "num_members": 3
   },
   {
     "icon": "🏅",

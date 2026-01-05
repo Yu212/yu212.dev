@@ -8,8 +8,9 @@ type Achievement = {
   icon: string
   date: string
   text: string
-  numMembers?: number
-  additionalMember?: boolean
+  team_name?: string
+  num_members?: number
+  additional_member?: boolean
 }
 
 export default function Achievements() {
@@ -27,9 +28,9 @@ export default function Achievements() {
               </div>
               <div className="mx-2">
                 {achievement.text}
-                {achievement.numMembers &&
-                  <div className="inline ml-1 bg-gray-200 shadow rounded text-xs px-0.5 cursor-default whitespace-nowrap" title={`${achievement.numMembers} 人チーム`}>
-                    <Twemoji emoji="🤝" size={12}/><span className="mx-0.5">{achievement.numMembers}{achievement.additionalMember && "+"}</span>
+                {achievement.num_members &&
+                  <div className="inline ml-1 bg-gray-200 shadow rounded text-xs px-0.5 cursor-default whitespace-nowrap" title={`${achievement.team_name} / ${achievement.num_members} 人チーム`}>
+                    <Twemoji emoji="🤝" size={12}/><span className="mx-0.5">{achievement.num_members}{achievement.additional_member && "+"}</span>
                   </div>
                 }
               </div>

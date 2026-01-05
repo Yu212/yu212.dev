@@ -27,7 +27,7 @@ export default function Home() {
         <Achievements/>
         <MyChallenges/>
         <footer className="text-center py-8">
-        <p>Last updated: {new Date("2025-11-20").toLocaleDateString("ja-JP")}</p>
+        <p>Last updated: {new Date("2026-01-06").toLocaleDateString("ja-JP")}</p>
         </footer>
       </main>
     </div>
