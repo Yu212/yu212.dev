@@ -84,6 +84,18 @@
         "category": "crypto",
         "difficulty": 3,
         "url": "https://alpacahack.com/daily/challenges/fully-padded-rsa"
+      },
+      {
+        "title": "Paca Paca Authenticator",
+        "category": "crypto",
+        "difficulty": 1,
+        "url": "https://alpacahack.com/daily/challenges/paca-paca-authenticator"
+      },
+      {
+        "title": "Linear Coffee Generator",
+        "category": "crypto",
+        "difficulty": 2,
+        "url": "https://alpacahack.com/daily/challenges/linear-coffee-generator"
       }
     ]
   },
