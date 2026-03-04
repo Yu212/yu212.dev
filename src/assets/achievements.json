@@ -1,5 +1,12 @@
 [
   {
+    "icon": "🏆",
+    "date": "2026/03",
+    "text": "SECCON CTF 14 Domestic Finals 1位",
+    "team_name": "TPC",
+    "num_members": 4
+  },
+  {
     "icon": "🥈",
     "date": "2025/11",
     "text": "International Cybersecurity Challenge TOKYO 2025 2位",
