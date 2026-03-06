@@ -122,6 +122,12 @@
         "category": "crypto",
         "difficulty": 5,
         "url": "https://dreamhack.io/wargame/challenges/1960"
+      },
+      {
+        "title": "singlerand",
+        "category": "crypto",
+        "difficulty": 9,
+        "url": "https://dreamhack.io/wargame/challenges/2753"
       }
     ]
   },
