@@ -8,17 +8,8 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowLeft } from "@fortawesome/free-solid-svg-icons";
 import WriteupContent from "@/components/writeup/writeup-content";
 
-function formatProblemTitle(category: string, title: string) {
-  const normalizedCategory = category.trim();
-  const prefix = `${normalizedCategory} - `;
-  if (title.toLowerCase().startsWith(prefix.toLowerCase())) {
-    return title.slice(prefix.length);
-  }
-  return title;
-}
-
-function formatCategoryId(category: string) {
-  return `category-${category.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")}`;
+function formatCategoryId(categories: string[]) {
+  return `category-${categories.join("-")}`;
 }
 
 type ProblemGroup = {
@@ -30,13 +21,14 @@ type ProblemGroup = {
 function groupProblemsByCategory(problems: Problem[]): ProblemGroup[] {
   const grouped = new Map<string, ProblemGroup>();
   for (const problem of problems) {
-    const existing = grouped.get(problem.category);
+    const category = problem.categories.join(" & ");
+    const existing = grouped.get(category);
     if (existing) {
       existing.items.push(problem);
     } else {
-      grouped.set(problem.category, {
-        category: problem.category,
-        id: formatCategoryId(problem.category),
+      grouped.set(category, {
+        category,
+        id: formatCategoryId(problem.categories),
         items: [problem],
       });
     }
@@ -103,7 +95,7 @@ export default async function WriteupPage({ params }: { params: { contest: strin
     id: group.id,
     items: group.items.map((problem) => ({
       id: problem.anchor,
-      title: formatProblemTitle(problem.category, problem.title),
+      title: problem.title,
     })),
   }));
 
@@ -147,9 +139,9 @@ export default async function WriteupPage({ params }: { params: { contest: strin
                     <div className="space-y-12">
                       {group.items.map((problem) => (
                         <section key={problem.anchor} id={problem.anchor} className="bg-white border border-gray-200 rounded-lg p-6">
-                          <div className="text-xs uppercase tracking-wide text-gray-500">{problem.category}</div>
+                          <div className="text-xs uppercase tracking-wide text-gray-500">{problem.categories.join(" & ")}</div>
                           <h2 className="text-2xl font-semibold mt-1">
-                            {formatProblemTitle(problem.category, problem.title)}
+                            {problem.title}{problem.solves !== undefined && <span className="text-gray-500 font-normal"> ({problem.solves} {problem.solves === 1 ? "solve" : "solves"})</span>}
                           </h2>
                           <WriteupContent html={problem.bodyHtml} className="mt-4" />
                         </section>

@@ -13,7 +13,8 @@ export type Problem = {
   title: string;
   order: number;
   orderLabel: string;
-  category: string;
+  categories: string[];
+  solves?: number;
   anchor: string;
   bodyHtml: string;
   filename: string;

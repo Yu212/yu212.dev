@@ -8,7 +8,7 @@ import myChallenges from "@/assets/my-challenges.json"
 
 type Challenge = {
   title: string
-  category?: string
+  categories: string[]
   difficulty: number
   url: string
 }
@@ -47,12 +47,12 @@ function ChallengeCard({ challenge }: { challenge: Challenge }) {
           <span className="font-semibold text-black">{challenge.title}</span>
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-gray-600">
-          {challenge.category &&
-            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5">
-              <Twemoji emoji={categoryEmoji[challenge.category]} size={14}/>
-              <span className="capitalize">{challenge.category.replace("_", " ")}</span>
+          {challenge.categories.map((category) => (
+            <span key={category} className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5">
+              <Twemoji emoji={categoryEmoji[category] ?? "🏷️"} size={14}/>
+              <span className="capitalize">{category.replaceAll("_", " ")}</span>
             </span>
-          }
+          ))}
           <div className="ml-auto">
             <Difficulty level={challenge.difficulty}/>
           </div>

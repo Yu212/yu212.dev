@@ -10,11 +10,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCopy } from "@fortawesome/free-solid-svg-icons";
+import { visit } from "unist-util-visit";
 
 const writeupsRoot = path.join(process.cwd(), "content", "writeups");
 const miscRoot = path.join(writeupsRoot, "misc");
+const publicWriteupsRoot = path.join(process.cwd(), "public", "writeups");
 const generatedRoot = path.join(writeupsRoot, ".generated");
-const problemFilePattern = /^(\d{2})-([^-]+)-(.+)\.mdx$/;
+const problemFilePattern = /^(\d{2})-(.+)\.mdx$/;
 
 const errors = [];
 
@@ -39,7 +41,7 @@ function isValidTags(value) {
   return false;
 }
 
-async function renderMarkdown(markdown) {
+async function renderMarkdown(markdown, basePath = "") {
   const compiled = await compile(markdown, {
     outputFormat: "function-body",
     providerImportSource: "@mdx-js/react",
@@ -49,6 +51,16 @@ async function renderMarkdown(markdown) {
     ],
     rehypePlugins: [
       rehypeKatex,
+      ...(basePath ? [() => (tree) => {
+        visit(tree, "element", (node) => {
+          if (node.tagName === "img" && typeof node.properties?.src === "string") {
+            const src = node.properties.src;
+            if (!src.startsWith("http") && !src.startsWith("/") && !src.startsWith("data:")) {
+              node.properties.src = `${basePath}/${src.replace(/^\.\//, "")}`;
+            }
+          }
+        });
+      }] : []),
       [
         rehypePrettyCode,
         {
@@ -89,6 +101,20 @@ async function renderMarkdown(markdown) {
   });
 
   return renderToStaticMarkup(jsx(Content, {}));
+}
+
+const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".avif"]);
+
+async function copyImages(srcDir, destSlug) {
+  const entries = await readDirSafe(srcDir);
+  if (!entries) return;
+  const destDir = path.join(publicWriteupsRoot, destSlug);
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    if (!IMAGE_EXTS.has(path.extname(entry.name).toLowerCase())) continue;
+    await fs.mkdir(destDir, { recursive: true });
+    await fs.copyFile(path.join(srcDir, entry.name), path.join(destDir, entry.name));
+  }
 }
 
 async function readDirSafe(dir) {
@@ -174,6 +200,9 @@ async function validateContestDir(dirent) {
     if (!isNonEmptyString(problemData.title)) {
       addError(`[writeups] Problem missing title: ${problemPath}`);
     }
+    if (!isValidTags(problemData.categories)) {
+      addError(`[writeups] Problem missing categories: ${problemPath}`);
+    }
   }
 }
 
@@ -189,6 +218,9 @@ async function validateWriteups() {
       continue;
     }
     if (entry.name === "misc" || entry.name === ".generated") {
+      continue;
+    }
+    if (entry.name.startsWith("_")) {
       continue;
     }
     await validateContestDir(entry);
@@ -251,7 +283,9 @@ async function buildContests() {
     }
 
     const { data, content } = matter(indexSource);
-    const overviewHtml = await renderMarkdown(content);
+    const basePath = `/writeups/${entry.name}`;
+    await copyImages(contestDir, entry.name);
+    const overviewHtml = await renderMarkdown(content, basePath);
 
     const meta = {
       title: typeof data.title === "string" ? data.title : entry.name,
@@ -279,27 +313,31 @@ async function buildContests() {
         return {
           file,
           order: Number.parseInt(match[1], 10),
-          category: match[2],
-          slug: `${match[1]}-${match[2]}-${match[3]}`,
+          slug: `${match[1]}-${match[2]}`,
+          name: match[2],
         };
       })
       .filter(Boolean);
 
     const problems = [];
-    for (const { file, order, category, slug } of problemFiles) {
+    for (const { file, order, slug, name } of problemFiles) {
       const source = await fs.readFile(path.join(contestDir, file), "utf8");
       const { data: problemData, content: problemContent } = matter(source);
       const title = typeof problemData.title === "string" ? problemData.title : "";
-      const bodyHtml = await renderMarkdown(problemContent);
+      const categories = problemData.categories.map((c) => String(c));
+      const solves = typeof problemData.solves === "number" ? problemData.solves : undefined;
+      const bodyHtml = await renderMarkdown(problemContent, basePath);
 
       problems.push({
         title,
         order,
         orderLabel: String(order).padStart(2, "0"),
-        category,
+        categories,
+        solves,
         bodyHtml,
         filename: file,
         slug,
+        name,
       });
     }
 
@@ -307,7 +345,7 @@ async function buildContests() {
       .sort((a, b) => a.order - b.order || a.filename.localeCompare(b.filename))
       .map((problem) => ({
         ...problem,
-        anchor: problem.slug,
+        anchor: problem.name,
       }));
 
     const contestPayload = {
@@ -341,7 +379,8 @@ async function buildMisc() {
     const { data, content } = matter(source);
     const title = typeof data.title === "string" ? data.title : "";
     const date = typeof data.date === "string" ? data.date : undefined;
-    const bodyHtml = await renderMarkdown(content);
+    await copyImages(miscRoot, "misc");
+    const bodyHtml = await renderMarkdown(content, `/writeups/misc`);
 
     await writeJson(path.join(generatedRoot, `misc-${slug}.json`), {
       slug,
