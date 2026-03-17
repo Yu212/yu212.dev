@@ -143,7 +143,7 @@ async function writeJson(filePath, payload) {
   await fs.writeFile(filePath, `${json}\n`, "utf8");
 }
 
-async function buildChallenges(contestDir, basePath, anchorPrefix = "") {
+async function buildChallenges(contestDir, basePath) {
   const files = await fs.readdir(contestDir);
   const challengeFiles = files
     .filter((file) => file.endsWith(".mdx") && !file.startsWith("index."))
@@ -183,7 +183,7 @@ async function buildChallenges(contestDir, basePath, anchorPrefix = "") {
 
   return challenges
     .sort((a, b) => a.order - b.order || a.filename.localeCompare(b.filename))
-    .map((challenge) => ({ ...challenge, anchor: anchorPrefix + challenge.name }));
+    .map((challenge) => ({ ...challenge, anchor: challenge.name }));
 }
 
 async function validateChallengeFiles(dir, label) {
@@ -244,6 +244,27 @@ async function validateContestDir(dirent) {
   const enIndex = await readFileSafe(path.join(enDir, "index.mdx"));
   if (enIndex !== null) {
     await validateChallengeFiles(enDir, "en");
+
+    const jaChallengeNames = new Set(
+      (await readDirSafe(contestDir) ?? [])
+        .filter((e) => e.isFile() && challengeFilePattern.test(e.name))
+        .map((e) => e.name)
+    );
+    const enChallengeNames = new Set(
+      (await readDirSafe(enDir) ?? [])
+        .filter((e) => e.isFile() && challengeFilePattern.test(e.name))
+        .map((e) => e.name)
+    );
+    for (const name of jaChallengeNames) {
+      if (!enChallengeNames.has(name)) {
+        addError(`[writeups] en/ missing challenge: ${path.join(enDir, name)}`);
+      }
+    }
+    for (const name of enChallengeNames) {
+      if (!jaChallengeNames.has(name)) {
+        addError(`[writeups] en/ has extra challenge not in ja: ${path.join(enDir, name)}`);
+      }
+    }
   }
 }
 

@@ -15,7 +15,7 @@ type ChallengeGroup = {
   items: Challenge[];
 };
 
-function groupChallengesByCategory(challenges: Challenge[], idPrefix = ""): ChallengeGroup[] {
+function groupChallengesByCategory(challenges: Challenge[]): ChallengeGroup[] {
   const grouped = new Map<string, ChallengeGroup>();
   for (const challenge of challenges) {
     const category = challenge.categories.join(" & ");
@@ -25,50 +25,12 @@ function groupChallengesByCategory(challenges: Challenge[], idPrefix = ""): Chal
     } else {
       grouped.set(category, {
         category,
-        id: `${idPrefix}category-${challenge.categories.join("-")}`,
+        id: `category-${challenge.categories.join("-")}`,
         items: [challenge],
       });
     }
   }
   return Array.from(grouped.values());
-}
-
-function toTocGroups(groups: ChallengeGroup[]) {
-  return groups.map((group) => ({
-    category: group.category,
-    id: group.id,
-    items: group.items.map((challenge) => ({
-      id: challenge.anchor,
-      title: challenge.title,
-    })),
-  }));
-}
-
-function ChallengeList({ groups }: { groups: ChallengeGroup[] }) {
-  return (
-    <div className="space-y-12">
-      {groups.map((group) => (
-        <section key={group.id} className="space-y-6">
-          <h3 id={group.id} className="text-xl font-semibold uppercase tracking-wide text-slate-600">
-            {group.category}
-          </h3>
-          <div className="space-y-12">
-            {group.items.map((challenge) => (
-              <section key={challenge.anchor} id={challenge.anchor} className="bg-white border border-gray-200 rounded-lg p-6">
-                <div className="text-xs uppercase tracking-wide text-gray-500">{challenge.categories.join(" & ")}</div>
-                <h2 className="text-2xl font-semibold mt-1">
-                  {challenge.title}{challenge.solves !== undefined && (
-                    <span className="text-gray-500 font-normal"> ({challenge.solves} {challenge.solves === 1 ? "solve" : "solves"})</span>
-                  )}
-                </h2>
-                <WriteupContent html={challenge.bodyHtml} className="mt-4" />
-              </section>
-            ))}
-          </div>
-        </section>
-      ))}
-    </div>
-  );
 }
 
 export async function generateStaticParams() {
@@ -120,8 +82,13 @@ export default async function WriteupPage({ params }: { params: { contest: strin
   }
 
   const { meta, hasEn, overviewHtml, overviewEnHtml, challenges, enChallenges } = writeup.data;
-  const jaGroups = groupChallengesByCategory(challenges);
-  const enGroups = enChallenges ? groupChallengesByCategory(enChallenges, "en-") : undefined;
+  const enByName = new Map(enChallenges?.map((c) => [c.name, c]));
+  const groups = groupChallengesByCategory(challenges);
+  const tocGroups = groups.map((group) => ({
+    category: group.category,
+    id: group.id,
+    items: group.items.map((c) => ({ id: c.anchor, title: c.title })),
+  }));
 
   return (
     <div className="text-black bg-gray-100 min-h-screen flex flex-col items-center">
@@ -160,15 +127,45 @@ export default async function WriteupPage({ params }: { params: { contest: strin
                 </div>
               )}
 
-              <div>
-                <div className={hasEn ? "lang-ja" : ""}><ChallengeList groups={jaGroups} /></div>
-                {hasEn && enGroups && <div className="lang-en"><ChallengeList groups={enGroups} /></div>}
+              <div className="space-y-12">
+                {groups.map((group) => (
+                  <section key={group.id} className="space-y-6">
+                    <h3 id={group.id} className="text-xl font-semibold uppercase tracking-wide text-slate-600">
+                      {group.category}
+                    </h3>
+                    <div className="space-y-12">
+                      {group.items.map((challenge) => {
+                        const enChallenge = enByName.get(challenge.name);
+                        return (
+                          <section key={challenge.anchor} id={challenge.anchor} className="bg-white border border-gray-200 rounded-lg p-6">
+                            <div className={hasEn ? "lang-ja" : ""}>
+                              <div className="text-xs uppercase tracking-wide text-gray-500">{challenge.categories.join(" & ")}</div>
+                              <h2 className="text-2xl font-semibold mt-1">
+                                {challenge.title}{challenge.solves !== undefined && <span className="text-gray-500 font-normal"> ({challenge.solves} {challenge.solves === 1 ? "solve" : "solves"})</span>}
+                              </h2>
+                              <WriteupContent html={challenge.bodyHtml} className="mt-4" />
+                            </div>
+                            {enChallenge && (
+                              <div className="lang-en">
+                                <div className="text-xs uppercase tracking-wide text-gray-500">{enChallenge.categories.join(" & ")}</div>
+                                <h2 className="text-2xl font-semibold mt-1">
+                                  {enChallenge.title}{enChallenge.solves !== undefined && <span className="text-gray-500 font-normal"> ({enChallenge.solves} {enChallenge.solves === 1 ? "solve" : "solves"})</span>}
+                                </h2>
+                                <WriteupContent html={enChallenge.bodyHtml} className="mt-4" />
+                              </div>
+                            )}
+                          </section>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ))}
               </div>
             </div>
 
             {challenges.length > 0 && (
               <aside className="hidden lg:block">
-                <WriteupToc groups={toTocGroups(jaGroups)} />
+                <WriteupToc groups={tocGroups} />
               </aside>
             )}
           </div>
