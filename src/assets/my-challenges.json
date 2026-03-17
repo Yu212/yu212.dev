@@ -1,18 +1,110 @@
 [
   {
+    "contest": "tkbctf5",
+    "competition_type": "CTF",
+    "url": "https://alpacahack.com/ctfs/tkbctf5",
+    "challenges": [
+
+      {
+        "title": "BINARY IN THE FUTURE.",
+        "categories": ["reversing"],
+        "difficulty": 4,
+        "url": "https://alpacahack.com/ctfs/tkbctf5/challenges/binary-in-the-future"
+      },
+      {
+        "title": "Red and Black",
+        "categories": ["reversing"],
+        "difficulty": 8,
+        "url": "https://alpacahack.com/ctfs/tkbctf5/challenges/red-and-black"
+      },
+      {
+        "title": "Yajirin",
+        "categories": ["reversing", "misc"],
+        "difficulty": 9,
+        "url": "https://alpacahack.com/ctfs/tkbctf5/challenges/yajirin"
+      },
+      {
+        "title": "Fault Tolerance Py",
+        "categories": ["misc"],
+        "difficulty": 7,
+        "url": "https://alpacahack.com/ctfs/tkbctf5/challenges/fault-tolerance-py"
+      },
+      {
+        "title": "javajail",
+        "categories": ["misc"],
+        "difficulty": 4,
+        "url": "https://alpacahack.com/ctfs/tkbctf5/challenges/javajail"
+      },
+      {
+        "title": "Yet Another Injection Challenge",
+        "categories": ["misc"],
+        "difficulty": 6,
+        "url": "https://alpacahack.com/ctfs/tkbctf5/challenges/yet-another-injection-challenge"
+      },
+      {
+        "title": "Dream of You",
+        "categories": ["web"],
+        "difficulty": 6,
+        "url": "https://alpacahack.com/ctfs/tkbctf5/challenges/dream-of-you"
+      },
+      {
+        "title": "Single Hint Rsa",
+        "categories": ["crypto"],
+        "difficulty": 2,
+        "url": "https://alpacahack.com/ctfs/tkbctf5/challenges/single-hint-rsa"
+      },
+      {
+        "title": "Double Hint Rsa",
+        "categories": ["crypto"],
+        "difficulty": 6,
+        "url": "https://alpacahack.com/ctfs/tkbctf5/challenges/double-hint-rsa"
+      },
+      {
+        "title": "Faulty AES",
+        "categories": ["crypto"],
+        "difficulty": 4,
+        "url": "https://alpacahack.com/ctfs/tkbctf5/challenges/faulty-aes"
+      },
+      {
+        "title": "RANDOM IN THE FUTURE.",
+        "categories": ["crypto"],
+        "difficulty": 4,
+        "url": "https://alpacahack.com/ctfs/tkbctf5/challenges/random-in-the-future"
+      },
+      {
+        "title": "Expensive Operator",
+        "categories": ["crypto"],
+        "difficulty": 9,
+        "url": "https://alpacahack.com/ctfs/tkbctf5/challenges/expensive-operator"
+      },
+      {
+        "title": "El Dorado",
+        "categories": ["crypto"],
+        "difficulty": 9,
+        "url": "https://alpacahack.com/ctfs/tkbctf5/challenges/el-dorado"
+      },
+      {
+        "title": "Faulty SHA",
+        "categories": ["crypto"],
+        "difficulty": 9,
+        "url": "https://alpacahack.com/ctfs/tkbctf5/challenges/faulty-sha"
+      }
+    ]
+  },
+  {
     "contest": "BlackHat MEA CTF Final 2025",
     "competition_type": "CTF",
     "url": "https://ctftime.org/event/2877/",
     "challenges": [
       {
         "title": "doloR Sit Amet",
-        "category": "crypto",
+        "categories": ["crypto"],
         "difficulty": 5,
         "url": "https://alpacahack.com/challenges/dolor-sit-amet"
       },
       {
         "title": "Noisy Channel",
-        "category": "crypto",
+        "categories": ["crypto"],
         "difficulty": 6,
         "url": "https://alpacahack.com/challenges/noisy-channel"
       }
@@ -25,25 +117,25 @@
     "challenges": [
       {
         "title": "RSARSARSARSARSARSA",
-        "category": "crypto",
+        "categories": ["crypto"],
         "difficulty": 2,
         "url": "https://alpacahack.com/ctfs/round-12/challenges/rsarsarsarsarsarsa"
       },
       {
         "title": "OTEC",
-        "category": "crypto",
+        "categories": ["crypto"],
         "difficulty": 3,
         "url": "https://alpacahack.com/ctfs/round-12/challenges/otec"
       },
       {
         "title": "Flag Sharing",
-        "category": "crypto",
+        "categories": ["crypto"],
         "difficulty": 5,
         "url": "https://alpacahack.com/ctfs/round-12/challenges/flag-sharing"
       },
       {
         "title": "Zero-sum game",
-        "category": "crypto",
+        "categories": ["crypto"],
         "difficulty": 8,
         "url": "https://alpacahack.com/ctfs/round-12/challenges/zero-sum-game"
       }
@@ -56,19 +148,19 @@
     "challenges": [
       {
         "title": "01-Translator",
-        "category": "crypto",
+        "categories": ["crypto"],
         "difficulty": 1,
         "url": "https://github.com/SECCON/2025_beginnersctf_ctf/tree/main/crypto/01-translator"
       },
       {
         "title": "Elliptic4b",
-        "category": "crypto",
+        "categories": ["crypto"],
         "difficulty": 2,
         "url": "https://github.com/SECCON/2025_beginnersctf_ctf/tree/main/crypto/elliptic4b"
       },
       {
         "title": "Golden Ticket",
-        "category": "crypto",
+        "categories": ["crypto"],
         "difficulty": 5,
         "url": "https://github.com/SECCON/2025_beginnersctf_ctf/tree/main/crypto/golden-ticket"
       }
@@ -81,19 +173,19 @@
     "challenges": [
       {
         "title": "Fully Padded RSA",
-        "category": "crypto",
+        "categories": ["crypto"],
         "difficulty": 3,
         "url": "https://alpacahack.com/daily/challenges/fully-padded-rsa"
       },
       {
         "title": "Paca Paca Authenticator",
-        "category": "crypto",
+        "categories": ["crypto"],
         "difficulty": 1,
         "url": "https://alpacahack.com/daily/challenges/paca-paca-authenticator"
       },
       {
         "title": "Linear Coffee Generator",
-        "category": "crypto",
+        "categories": ["crypto"],
         "difficulty": 2,
         "url": "https://alpacahack.com/daily/challenges/linear-coffee-generator"
       }
@@ -106,7 +198,7 @@
     "challenges": [
       {
         "title": "doloR Sit Amet Revenge",
-        "category": "crypto",
+        "categories": ["crypto"],
         "difficulty": 7,
         "url": "https://alpacahack.com/challenges/dolor-sit-amet-revenge"
       }
@@ -119,13 +211,13 @@
     "challenges": [
       {
         "title": "No No Padding Oracle",
-        "category": "crypto",
+        "categories": ["crypto"],
         "difficulty": 5,
         "url": "https://dreamhack.io/wargame/challenges/1960"
       },
       {
         "title": "singlerand",
-        "category": "crypto",
+        "categories": ["crypto"],
         "difficulty": 9,
         "url": "https://dreamhack.io/wargame/challenges/2753"
       }
@@ -138,7 +230,7 @@
     "challenges": [
       {
         "title": "Chase",
-        "category": "competitive_programming",
+        "categories": ["competitive_programming"],
         "difficulty": 6,
         "url": "https://mofecoder.com/contests/itfpc2023/tasks/itfpc2023_h"
       }
@@ -151,31 +243,31 @@
     "challenges": [
       {
         "title": "Food Fight",
-        "category": "competitive_programming",
+        "categories": ["competitive_programming"],
         "difficulty": 4,
         "url": "https://mofecoder.com/contests/itfpc2024/tasks/itfpc2024_g"
       },
       {
         "title": "Hyper Nim Machine",
-        "category": "competitive_programming",
+        "categories": ["competitive_programming"],
         "difficulty": 4,
         "url": "https://mofecoder.com/contests/itfpc2024/tasks/itfpc2024_h"
       },
       {
         "title": "Matrix on SegmentTree",
-        "category": "competitive_programming",
+        "categories": ["competitive_programming"],
         "difficulty": 6,
         "url": "https://mofecoder.com/contests/itfpc2024/tasks/itfpc2024_l"
       },
       {
         "title": "Set Seed Speedrun",
-        "category": "competitive_programming",
+        "categories": ["competitive_programming"],
         "difficulty": 8,
         "url": "https://mofecoder.com/contests/itfpc2024/tasks/itfpc2024_n"
       },
       {
         "title": "ITF. Puzzle Contest",
-        "category": "competitive_programming",
+        "categories": ["competitive_programming"],
         "difficulty": 9,
         "url": "https://mofecoder.com/contests/itfpc2024/tasks/itfpc2024_p"
       }
@@ -188,13 +280,13 @@
     "challenges": [
       {
         "title": "Approximation",
-        "category": "competitive_programming",
+        "categories": ["competitive_programming"],
         "difficulty": 5,
         "url": "https://mofecoder.com/contests/itfpc2025/tasks/itfpc2025_g"
       },
       {
         "title": "Mission",
-        "category": "competitive_programming",
+        "categories": ["competitive_programming"],
         "difficulty": 8,
         "url": "https://mofecoder.com/contests/itfpc2025/tasks/itfpc2025_h"
       }
