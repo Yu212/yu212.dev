@@ -16,7 +16,7 @@ const writeupsRoot = path.join(process.cwd(), "content", "writeups");
 const miscRoot = path.join(writeupsRoot, "misc");
 const publicWriteupsRoot = path.join(process.cwd(), "public", "writeups");
 const generatedRoot = path.join(writeupsRoot, ".generated");
-const problemFilePattern = /^(\d{2})-(.+)\.mdx$/;
+const challengeFilePattern = /^(\d{2})-(.+)\.mdx$/;
 
 const errors = [];
 
@@ -143,6 +143,74 @@ async function writeJson(filePath, payload) {
   await fs.writeFile(filePath, `${json}\n`, "utf8");
 }
 
+async function buildChallenges(contestDir, basePath, anchorPrefix = "") {
+  const files = await fs.readdir(contestDir);
+  const challengeFiles = files
+    .filter((file) => file.endsWith(".mdx") && !file.startsWith("index."))
+    .map((file) => {
+      const match = file.match(challengeFilePattern);
+      if (!match) return null;
+      return {
+        file,
+        order: Number.parseInt(match[1], 10),
+        slug: `${match[1]}-${match[2]}`,
+        name: match[2],
+      };
+    })
+    .filter(Boolean);
+
+  const challenges = [];
+  for (const { file, order, slug, name } of challengeFiles) {
+    const source = await fs.readFile(path.join(contestDir, file), "utf8");
+    const { data: challengeData, content: challengeContent } = matter(source);
+    const title = typeof challengeData.title === "string" ? challengeData.title : "";
+    const categories = challengeData.categories.map((c) => String(c));
+    const solves = typeof challengeData.solves === "number" ? challengeData.solves : undefined;
+    const bodyHtml = await renderMarkdown(challengeContent, basePath);
+
+    challenges.push({
+      title,
+      order,
+      orderLabel: String(order).padStart(2, "0"),
+      categories,
+      solves,
+      bodyHtml,
+      filename: file,
+      slug,
+      name,
+    });
+  }
+
+  return challenges
+    .sort((a, b) => a.order - b.order || a.filename.localeCompare(b.filename))
+    .map((challenge) => ({ ...challenge, anchor: anchorPrefix + challenge.name }));
+}
+
+async function validateChallengeFiles(dir, label) {
+  const entries = await readDirSafe(dir);
+  if (!entries) return;
+
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith(".mdx") || entry.name.startsWith("index.")) continue;
+    if (!challengeFilePattern.test(entry.name)) {
+      addError(`[writeups] Challenge filename invalid: ${path.join(dir, entry.name)}`);
+      continue;
+    }
+    const source = await readFileSafe(path.join(dir, entry.name));
+    if (!source) {
+      addError(`[writeups] Could not read challenge file: ${path.join(dir, entry.name)}`);
+      continue;
+    }
+    const { data } = matter(source);
+    if (!isNonEmptyString(data.title)) {
+      addError(`[writeups] ${label} challenge missing title: ${path.join(dir, entry.name)}`);
+    }
+    if (!isValidTags(data.categories)) {
+      addError(`[writeups] ${label} challenge missing categories: ${path.join(dir, entry.name)}`);
+    }
+  }
+}
+
 async function validateContestDir(dirent) {
   const contestDir = path.join(writeupsRoot, dirent.name);
   const source = await readContestIndexSource(contestDir);
@@ -170,39 +238,12 @@ async function validateContestDir(dirent) {
     addError(`[writeups] index.mdx invalid rank: ${contestDir}`);
   }
 
-  const entries = await readDirSafe(contestDir);
-  if (!entries) {
-    addError(`[writeups] Could not read contest directory: ${contestDir}`);
-    return;
-  }
+  await validateChallengeFiles(contestDir, "ja");
 
-  for (const entry of entries) {
-    if (!entry.isFile()) {
-      continue;
-    }
-    if (!entry.name.endsWith(".mdx")) {
-      continue;
-    }
-    if (entry.name.startsWith("index.")) {
-      continue;
-    }
-    if (!problemFilePattern.test(entry.name)) {
-      addError(`[writeups] Problem filename invalid: ${path.join(contestDir, entry.name)}`);
-      continue;
-    }
-    const problemPath = path.join(contestDir, entry.name);
-    const problemSource = await readFileSafe(problemPath);
-    if (!problemSource) {
-      addError(`[writeups] Could not read problem file: ${problemPath}`);
-      continue;
-    }
-    const { data: problemData } = matter(problemSource);
-    if (!isNonEmptyString(problemData.title)) {
-      addError(`[writeups] Problem missing title: ${problemPath}`);
-    }
-    if (!isValidTags(problemData.categories)) {
-      addError(`[writeups] Problem missing categories: ${problemPath}`);
-    }
+  const enDir = path.join(contestDir, "en");
+  const enIndex = await readFileSafe(path.join(enDir, "index.mdx"));
+  if (enIndex !== null) {
+    await validateChallengeFiles(enDir, "en");
   }
 }
 
@@ -214,24 +255,16 @@ async function validateWriteups() {
   }
 
   for (const entry of entries) {
-    if (!entry.isDirectory()) {
-      continue;
-    }
-    if (entry.name === "misc" || entry.name === ".generated") {
-      continue;
-    }
-    if (entry.name.startsWith("_")) {
-      continue;
-    }
+    if (!entry.isDirectory()) continue;
+    if (entry.name === "misc" || entry.name === ".generated") continue;
+    if (entry.name.startsWith("_")) continue;
     await validateContestDir(entry);
   }
 
   const miscEntries = await readDirSafe(miscRoot);
   if (miscEntries) {
     for (const entry of miscEntries) {
-      if (!entry.isFile() || !entry.name.endsWith(".mdx")) {
-        continue;
-      }
+      if (!entry.isFile() || !entry.name.endsWith(".mdx")) continue;
       const miscPath = path.join(miscRoot, entry.name);
       const source = await readFileSafe(miscPath);
       if (!source) {
@@ -264,23 +297,15 @@ async function buildContests() {
   const entries = await readDirSafe(writeupsRoot);
   const contestSlugs = [];
 
-  if (!entries) {
-    return contestSlugs;
-  }
+  if (!entries) return contestSlugs;
 
   for (const entry of entries) {
-    if (!entry.isDirectory()) {
-      continue;
-    }
-    if (entry.name === "misc" || entry.name === ".generated") {
-      continue;
-    }
+    if (!entry.isDirectory()) continue;
+    if (entry.name === "misc" || entry.name === ".generated") continue;
 
     const contestDir = path.join(writeupsRoot, entry.name);
     const indexSource = await readContestIndexSource(contestDir);
-    if (!indexSource) {
-      continue;
-    }
+    if (!indexSource) continue;
 
     const { data, content } = matter(indexSource);
     const basePath = `/writeups/${entry.name}`;
@@ -293,66 +318,33 @@ async function buildContests() {
       tags: Array.isArray(data.tags)
         ? data.tags.map((tag) => String(tag)).filter((tag) => tag.length > 0)
         : typeof data.tags === "string"
-          ? data.tags
-              .split(",")
-              .map((tag) => tag.trim())
-              .filter((tag) => tag.length > 0)
+          ? data.tags.split(",")
           : [],
       rank: typeof data.rank === "string" || typeof data.rank === "number" ? String(data.rank) : undefined,
       team: typeof data.team === "string" ? data.team : undefined,
     };
 
-    const files = await fs.readdir(contestDir);
-    const problemFiles = files
-      .filter((file) => file.endsWith(".mdx") && !file.startsWith("index."))
-      .map((file) => {
-        const match = file.match(problemFilePattern);
-        if (!match) {
-          return null;
-        }
-        return {
-          file,
-          order: Number.parseInt(match[1], 10),
-          slug: `${match[1]}-${match[2]}`,
-          name: match[2],
-        };
-      })
-      .filter(Boolean);
+    const challenges = await buildChallenges(contestDir, basePath);
 
-    const problems = [];
-    for (const { file, order, slug, name } of problemFiles) {
-      const source = await fs.readFile(path.join(contestDir, file), "utf8");
-      const { data: problemData, content: problemContent } = matter(source);
-      const title = typeof problemData.title === "string" ? problemData.title : "";
-      const categories = problemData.categories.map((c) => String(c));
-      const solves = typeof problemData.solves === "number" ? problemData.solves : undefined;
-      const bodyHtml = await renderMarkdown(problemContent, basePath);
+    const enDir = path.join(contestDir, "en");
+    const enIndexSource = await readFileSafe(path.join(enDir, "index.mdx"));
+    const hasEn = enIndexSource !== null;
 
-      problems.push({
-        title,
-        order,
-        orderLabel: String(order).padStart(2, "0"),
-        categories,
-        solves,
-        bodyHtml,
-        filename: file,
-        slug,
-        name,
-      });
+    let overviewEnHtml;
+    let enChallenges;
+    if (hasEn) {
+      const { content: enContent } = matter(enIndexSource);
+      overviewEnHtml = await renderMarkdown(enContent, basePath);
+      enChallenges = await buildChallenges(enDir, basePath, "en-");
     }
-
-    const sortedProblems = problems
-      .sort((a, b) => a.order - b.order || a.filename.localeCompare(b.filename))
-      .map((problem) => ({
-        ...problem,
-        anchor: problem.name,
-      }));
 
     const contestPayload = {
       slug: entry.name,
       meta,
+      hasEn,
       overviewHtml,
-      problems: sortedProblems,
+      ...(hasEn && { overviewEnHtml, enChallenges }),
+      challenges,
     };
 
     await writeJson(path.join(generatedRoot, `contest-${entry.name}.json`), contestPayload);
@@ -366,14 +358,10 @@ async function buildMisc() {
   const entries = await readDirSafe(miscRoot);
   const miscSlugs = [];
 
-  if (!entries) {
-    return miscSlugs;
-  }
+  if (!entries) return miscSlugs;
 
   for (const entry of entries) {
-    if (!entry.isFile() || !entry.name.endsWith(".mdx")) {
-      continue;
-    }
+    if (!entry.isFile() || !entry.name.endsWith(".mdx")) continue;
     const slug = entry.name.replace(/\.mdx$/, "");
     const source = await fs.readFile(path.join(miscRoot, entry.name), "utf8");
     const { data, content } = matter(source);

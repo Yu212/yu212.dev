@@ -9,7 +9,7 @@ export type ContestMeta = {
   team?: string;
 };
 
-export type Problem = {
+export type Challenge = {
   title: string;
   order: number;
   orderLabel: string;
@@ -18,13 +18,17 @@ export type Problem = {
   anchor: string;
   bodyHtml: string;
   filename: string;
+  name: string;
 };
 
 export type ContestData = {
   slug: string;
   meta: ContestMeta;
+  hasEn: boolean;
   overviewHtml: string;
-  problems: Problem[];
+  overviewEnHtml?: string;
+  challenges: Challenge[];
+  enChallenges?: Challenge[];
 };
 
 export type StandaloneData = {
@@ -115,7 +119,7 @@ export async function getMiscData(slug: string): Promise<StandaloneData | null> 
 
 export async function getWriteupPageData(slug: string): Promise<WriteupPageData | null> {
   const contest = await getContestData(slug);
-  if (contest && contest.problems.length > 0) {
+  if (contest && contest.challenges.length > 0) {
     return { kind: "contest", data: contest };
   }
   const misc = await getMiscData(slug);

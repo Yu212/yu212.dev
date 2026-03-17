@@ -26,25 +26,20 @@ export default function WriteupToc({ groups }: WriteupTocProps) {
   }, [ids]);
 
   useEffect(() => {
-    if (ids.length === 0) {
-      return;
-    }
+    if (ids.length === 0) return;
 
     const elements = ids
       .map((id) => document.getElementById(id))
       .filter((element): element is HTMLElement => Boolean(element));
 
-    if (elements.length === 0) {
-      return;
-    }
+    if (elements.length === 0) return;
 
     let ticking = false;
     const updateActive = () => {
       ticking = false;
       let currentId = elements[0].id;
       for (const element of elements) {
-        const top = element.getBoundingClientRect().top;
-        if (top <= 160) {
+        if (element.getBoundingClientRect().top <= 160) {
           currentId = element.id;
         } else {
           break;
@@ -63,7 +58,6 @@ export default function WriteupToc({ groups }: WriteupTocProps) {
     updateActive();
     window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("resize", onScroll);
-
     return () => {
       window.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", onScroll);
@@ -75,7 +69,7 @@ export default function WriteupToc({ groups }: WriteupTocProps) {
       <div className="text-sm font-semibold uppercase tracking-wide text-slate-600">Contents</div>
       <div className="space-y-4 text-sm">
         {groups.map((group) => (
-          <div key={group.category} className="space-y-2">
+          <div key={group.id} className="space-y-2">
             <a href={`#${group.id}`} className="block text-xs uppercase tracking-wide text-gray-500 hover:text-[#6292e9]">
               {group.category}
             </a>

@@ -18,6 +18,9 @@ html {
   scroll-behavior: smooth;
 }
 
+[data-lang="ja"] .lang-en { display: none; }
+[data-lang="en"] .lang-ja { display: none; }
+
 body {
   color: var(--foreground);
   background: var(--background);
