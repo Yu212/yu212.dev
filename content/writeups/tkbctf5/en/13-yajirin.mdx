@@ -1,0 +1,179 @@
+---
+title: "Yajirin"
+categories: ["rev", "misc"]
+---
+# Challenge
+
+One URL for a Yajilin pencil puzzle is distributed. The README also describes how the flag is calculated.
+
+> 1. Look at the first row of the solved grid
+> 2. Create a binary string by reading from left to right, using `1` for black cells and `0` for non-black cells
+> 3. Compute the SHA-256 hash of that string
+> 4. The flag is in the format `tkbctf{<hex hash>}`
+
+# Solution
+
+## Parsing the URL
+
+The distributed URL cannot be opened directly in a browser or with curl.
+
+The URL format for Yajilin on puzz.link is `yajilin/<cols>/<rows>/<data>`.
+Looking at [the `pzprjs` implementation](https://github.com/robx/pzprjs/blob/main/src/variety-common/Encode.js), the encoding rules for the `<data>` part are as follows:
+
+- A character `0`-`4` followed by one more character: arrow cell (direction + number)
+- A character `5`-`9` followed by two more characters: arrow cell (for larger numbers)
+- `+`: black cell
+- `a`-`z`: skip blank cells (`a` = skip 1 cell, `z` = skip 26 cells)
+
+Following these rules and decoding gives a `cols x rows` grid.
+
+## Discovering the Grid Structure
+
+Visualizing the grid reveals a structure with multiple "lanes" arranged horizontally.
+
+![Visualized board](yajirin.png)
+
+Observing the structure, there are 434 up-down traversals, with only the first 16 having a distinct upper structure from the rest.
+From the 17th traversal onward, two types of patterns appear diagonally.
+
+```
+^0    ^0 ^0 ^0 ^0 ^0
+^0    ^0 ^0 ^0 ^0 ^0
+^0          ^0 ^0 ^0
+^0          ^0 ^0 ^0
+^0    <1    ^0 ^0 ^0
+^0                <0
+^0                ^0
+^0       v1       ^0
+^0    <1 v1    ^0 ^0
+^0             ^0 ^0
+>0                ^0
+^0          v0    ^0
+^0 ^2 v0 <0 v0    ^0
+^0 v0 v0 <0 v0    ^0
+^0                ^0
+^0          v0 v0 ^0
+^0       v0 v0 v0 ^0
+^0       v0 v0 v0 ^0
+```
+
+```
+v0 ^0 ^0    ^0 ^0 ^0 ^0 ^0 ^0 ^0
+v0 ^0 ^0    ^0 ^0 ^0 ^0 ^0 ^0 ^0
+v0 ^0 ^0    ^0 ^0 ^0 ^0 ^0 ^0 ^0
+v0 ^0 ^0          ^0 ^0 ^0 ^0 ^0
+v0 ^0 ^0          ^0 ^0 ^0 ^0 ^0
+v0 ^0 ^0    <1    ^0 ^0 ^0 ^0 ^0
+v0 ^0 ^0                <0 ^0 ^0
+v0 ^0 >1                   v1 ^0
+v0 ^0 ^0       v1             ^0
+v0 ^0 ^0    <1 v1    ^0       ^0
+v0 ^0 ^0             ^0       ^0
+v0 ^0 >0                      ^0
+v0 ^0 ^0          <1 v0 <1    ^0
+v0 ^0 ^0 ^2 <0 <0 v0 v0 <0    ^0
+v0 ^0 ^0 ^2          v0       ^0
+v0                            <2
+v0             <0 v0 v0 v0 v0 ^0
+v0       v0 v0 v0 v0 v0 v0 v0 ^0
+v0             v0 v0 v0 v0 v0 ^0
+v0             v0 v0 v0 v0 v0 ^0
+v0 ^0 ^1       v0 v0 v0 v0 v0 ^0
+v0 ^0 ^1       v0 v0 v0 v0 v0 ^0
+```
+
+Additionally, to the left of these patterns, the following pattern always appears twice:
+
+```
+v0 ^0 ^0       v0 v0
+v0 ^0 ^0       v0 v0
+v0 ^0          v0 v0
+v0             v0 v0
+v0       v0 v0 v0 v0
+v0       v0 v0 v0 v0
+v0             <0 v0
+v0             v0 v0
+v0 ^0 ^1       v0 v0
+v0 ^0 ^1       v0 v0
+```
+
+The whole structure appears to be composed of combinations of these patterns. Extracting the minimal construction of each pattern gives the following:
+
+[https://puzz.link/p?yajilin/b/24/24/20e2020e20e1010101010f20f20a2...](https://puzz.link/p?yajilin/b/24/24/20e2020e20e1010101010f20f20a201010a1010101010a201010b20a201010b20a201010a1010101010a2010c20a201010b20a201010c101010a20d20a201010b20a201010c101010a20b202020a201010b20a201010a31a101010a20b202020a201010b20a201010e30a20d30a2010c20a201010e10a20d20a20d20a201010b21b10a201011b20a20b202020a201010a3121a1010a201011b20a20b202020a201010d1010a201011b20a20d30a201040e10a201011b20a20d20a201010c20a10a201011b20a201011b20a20101012203020a10a201011b20a201011b20a20101020203020a10a201011b20a201011b20a201010e10a201011b20a201011b20a201010c202010a201011b20a201011b20a201010b20202010a2010c20a2010c20a2010c20202010a2010c20a2010c20a2010c20202010a2010b1020a2010b1020a2010b2020202010a201020d201020d201020g20102010102010201020101020102010202020202020y)
+
+[https://puzz.link/p?yajilin/b/26/27/20e2020e20e10101010101010f20f...](https://puzz.link/p?yajilin/b/26/27/20e2020e20e10101010101010f20f20a201010a10101010101010a201010b20a201010b20a201010a10101010101010a2010c20a201010b20a201010c1010101010a20d20a201010b20a201010c1010101010a20b202020a201010b20a201010a31a1010101010a20b202020a201010b20a201010e301010a20d30a2010c20a201041f2110a20d20a20d20a201010b21d10a201011b20a20b202020a201010a3121a10b10a201011b20a20b202020a201010d10b10a201011b20a20d30a201040g10a201011b20a20d20a201010c312031a10a201011b20a201011b20a201010123030202030a10a201011b20a201011b20a20101012c20b10a201011b20a201011b20a20i32a201011b20a201011b20a20d302020202010a201011b20a201011b20a20b2020202020202010a201011b20a201011b20a20d202020202010a201011b20a201011b20a20d202020202010a201011b20a201011b20a201011b202020202010a2010c20a2010c20a2010c202020202010a2010c20a2010c20a2010c202020202010a2010b1020a2010b1020a2010b20202020202010a201020d201020d201020i201020101020102010201010201020102020202020202020za)
+
+Enumerating solutions for each reveals that the two black cell positions in the top row (columns 2 and 9) can be in any of the four states `00, 01, 10, 11`. In the first pattern, when they are both `11`, and in the second pattern, when they are `10` or `01`, the topmost cell of the protruding three cells at the bottom right becomes a black cell. This indicates that these patterns implement AND and XOR bit operations, respectively.
+
+## Path Meandering and Bit Representation
+
+In each lane, the path meanders horizontally while extending downward. This meandering has two "phases" determined by the input bit:
+
+```
+v[x]┏ ┓ ┏ ┓    v ┏ ┓ ┏ ━ ┓
+┏ ━ ┛ ┗ ┛ ┃    ┏ ┛ ┗ ┛ ┏ ┛
+┃ v ^ ^ ┏ ┛    ┃ v ^ ^ ┗ ┓
+┃ v ^ ^ ┗ ┓    ┃ v ^ ^ ┏ ┛
+┃ v ^ ^ ┏ ┛    ┃ v ^ ^ ┗ ┓
+┃ v ^ ^ ┗ ┓    ┃ v ^ ^ ┏ ┛
+```
+
+The input bit 0 or 1 changes the path near the top row, and the part continuing below starts with the meander phase shifted. This phase is preserved as it propagates to the bottom row.
+
+## Read-out Gadget and NOT Operation
+
+The read-out gadget described above is placed overlapping the source lane, and is constructed so that different positions become black cells depending on the phase.
+
+```
+v ^ ^ ┏ ┛ v v    v ^ ^ ┗ ┓ v v
+v ^ ^ ┗ ┓ v v    v ^ ^ ┏ ┛ v v
+v ^ ┏ ┓ ┃ v v    v ^[x]┗ ┓ v v
+v ┏ ┛ ┗ ┛ v v    v ┏ ━ ━ ┛ v v
+v ┃[x]v v v v    v ┗ ┓ v v v v
+v ┗ ┓ v v v v    v ┏ ┛ v v v v
+v ┏ ┛ ┏ ┓ < v    v ┃ ┏ ━ ┓ < v
+v ┗ ━ ┛ ┃ v v    v ┗ ┛ ┏ ┛ v v
+v ^ ^ ┏ ┛ v v    v ^ ^ ┗ ┓ v v
+v ^ ^ ┗ ┓ v v    v ^ ^ ┏ ┛ v v
+```
+
+Whether this black cell is placed before `<1` in the AND/XOR gadget determines the input bit to the gate, and the combination determines the subsequent phase of the lane containing the gate.
+
+Comparing the `[x]` positions in the diagram above: on the left, the black cell is in row 5; on the right, it is in row 3. This difference in "higher/lower" corresponds not to the bit value itself but to whether it is inverted.
+
+NOT is represented in two ways.
+
+### Read-out Gadget Position
+When the entire gadget is shifted 2 rows upward, the path stays the same but the row where the AND/XOR gadget reads out the black cell changes from row 3 to row 5. This inverts the value read out.
+
+### Even/Odd Row of AND/XOR Gadget Placement
+Since the meander has a 2-row period, shifting the entire gadget by 1 row shifts the phase by half a period, changing which path passes through the read-out gadget and inverting the value read out.
+
+When analyzing the board, read these two separately and XOR them to recover the NOT flag.
+
+The value ultimately evaluated is the output of the rightmost lane. The last row of the last lane is as follows, and this is only satisfiable when the lane output is 1:
+
+```
+^0 ^0       v0 v0 v0 ^0
+>1          v0
+^0          v0
+^0       v0 >0
+^0 v0                v0
+^0 v0 v0 v0 v0 v0    v0
+                     v0
+```
+
+From this analysis, the entire board can be parsed as a circuit. Since the input is 16 bits, you can calculate the output for all $2^{16}$ possible inputs, or use a solver like z3 to find the input that makes the output 1. The solution is `1100000110110101`.
+Since each input bit corresponds to column $7x+2$ of the top row, the flag can be calculated as follows:
+
+```python
+bits = "1100000110110101"
+width = 4548
+val = bytearray(b"0"*width)
+for i in range(16):
+    val[i*7+1] = ord(bits[i])
+print(f"tkbctf{{{hashlib.sha256(val).hexdigest()}}}")
+```
+
+I love the logic circuit problems that appear every year in Google CTF, so this was inspired by those.
+I didn't really intend for this to be solved by hand; the idea was to collaborate effectively with AI. A good approach is to let AI handle things like URL parsing while humans focus on understanding the structure.

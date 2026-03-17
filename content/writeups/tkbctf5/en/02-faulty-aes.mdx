@@ -1,0 +1,121 @@
+---
+title: "Faulty AES"
+categories: ["crypto"]
+solves: 61
+---
+# Challenge
+The following server is given.
+```python showLineNumbers
+import inspect
+import os
+import hashlib
+# https://github.com/boppreh/aes/blob/master/aes.py
+import aes
+
+flag = os.environ.get("FLAG", "tkbctf{dummy}")
+hash_val = hashlib.sha256(flag.encode()).digest()
+key, msg = hash_val[:16], hash_val[16:]
+
+pos = int(input("pos: "))
+source = bytearray(inspect.getsource(aes), "utf-8")
+source[pos // 8] ^= 1 << (pos % 8)
+exec(bytes(source), aes.__dict__)
+
+print("ct:", aes.AES(key).encrypt_block(msg).hex())
+if bytes.fromhex(input("hash: ")) == hash_val:
+    print(flag)
+else:
+    print("wrong")
+```
+The `aes` module is overwritten with source code that has the bit specified by `pos` flipped, and `encrypt_block` is executed using that implementation. Since `hash_val = sha256(flag)` directly becomes `key || msg`, knowing `key` and `msg` gives us the flag.
+
+`aes.py` is an AES implementation (`boppreh/aes`) published on GitHub, and the implementation appears to have no bugs.
+
+# Solution
+Per connection, only 1 bit of the AES implementation can be broken. However, since the `key` and `msg` we want to compute are the same across multiple connections, we can obtain a lot of information by connecting multiple times and breaking different parts each time.
+
+## 1. Disable `add_round_key` to recover `msg`
+We rewrite the `for i in range(4):` inside the `add_round_key` function on line 64.
+Since `'4' = 0x34` and `'0' = 0x30` differ by 1 bit, flipping the corresponding bit changes `range(4)` to `range(0)`. Since `add_round_key` XORs all bytes of the 4×4 state with the key, making this loop run 0 times turns it into a function that does nothing, making the ciphertext a fixed transformation independent of the key. Therefore, applying the inverse AES transformation to the obtained ciphertext recovers `msg`.
+
+## 2. Set the round count to 0 to recover `key`
+Changing `16: 10` in `rounds_by_key_size` by turning the `1` to `0`, giving `16: 00`, sets the round count to 0 (since `'1' = 0x31` and `'0' = 0x30` also differ by only 1 bit). In this case, encryption becomes
+`ct = ShiftRows(SubBytes(msg ^ key)) ^ key`, and since `ct` and `msg` are known, we get an equation in `key`.
+
+There are two ways to solve this equation.
+
+### Using z3
+Place `key` (16 bytes) directly as z3 BitVec variables and solve using the above equation as the constraint.
+
+### Without z3
+Since there is no MixColumns, ShiftRows only cycles 4 bytes per column, and each column can be solved independently. For column `j`, we get 4 equations; `j=0` is independent per byte, `j=1,3` is a 4-byte cycle, and `j=2` is a pair swap. By assuming one byte and determining the others in sequence, candidates for each column can be enumerated, and combinations across 4 columns give `key` candidates.
+
+Finally, for each candidate, send `hash = key || msg` to verify and obtain the flag.
+
+The solver is as follows. It uses z3 to solve.
+
+<details>
+<summary>Solver (click to expand)</summary>
+```python showLineNumbers
+import sys
+from pwn import *
+from z3 import *
+import inspect
+
+import aes
+
+def oracle(idx, h=None):
+    with remote("35.194.108.145", 54140) as sc:
+        sc.sendlineafter(b"pos: ", str(idx).encode())
+        sc.recvuntil(b"ct: ")
+        ct = bytes.fromhex(sc.recvline().decode())
+        if h is not None:
+            sc.sendlineafter(b"hash: ", h.hex().encode())
+            return sc.recvline()
+        return ct
+
+
+source = bytearray(inspect.getsource(aes), "utf-8")
+
+ct1 = oracle(source.index(b"for i in range(4):", source.index(b"add_round_key")) * 8 + 122) # for i in range(0):
+ct2 = oracle(source.index(b"{16: 10, ") * 8 + 40) # {16: 00,
+
+def decrypt_block(ciphertext):
+    cipher_state = aes.bytes2matrix(ciphertext)
+    aes.inv_shift_rows(cipher_state)
+    aes.inv_sub_bytes(cipher_state)
+    for i in range(9, 0, -1):
+        aes.inv_mix_columns(cipher_state)
+        aes.inv_shift_rows(cipher_state)
+        aes.inv_sub_bytes(cipher_state)
+    return aes.matrix2bytes(cipher_state)
+pt = decrypt_block(ct1)
+
+s = Solver()
+subF = Function("subByte_f", BitVecSort(8), BitVecSort(8))
+for i in range(256):
+    s.add(subF(i) == aes.s_box[i])
+key_sym = [BitVec(f"key_{i}", 8) for i in range(16)]
+
+perm = [0, 5, 10, 15, 4, 9, 14, 3, 8, 13, 2, 7, 12, 1, 6, 11]
+state = [pt[i] ^ key_sym[i] for i in range(16)]
+state = [subF(v) for v in state]
+state = [state[i] for i in perm]
+state = [state[i] ^ key_sym[i] for i in range(16)]
+
+for i in range(16):
+    s.add(state[i] == ct2[i])
+while s.check() == sat:
+    m = s.model()
+    rec_key = [m[i].as_long() for i in key_sym]
+
+    print(rec_key)
+
+    res = oracle(source.index(b"# learned") * 8 + 8, h=bytes(rec_key)+pt)
+    print(res)
+    if b"wrong" not in res:
+        break
+    s.add(Or([rec_key[i] != key_sym[i] for i in range(16)]))
+```
+
+</details>

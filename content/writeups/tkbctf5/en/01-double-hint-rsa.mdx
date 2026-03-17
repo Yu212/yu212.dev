@@ -1,0 +1,129 @@
+---
+title: "Double Hint RSA"
+categories: ["crypto"]
+solves: 28
+---
+# Challenge
+The following script and its output are given.
+```python showLineNumbers
+import os
+from math import gcd
+from Crypto.Util.number import getPrime, bytes_to_long
+
+e = 11
+flag = os.environ.get("FLAG", f"tkbctf{{{"dummy"*12}}}")
+flag = flag.removeprefix("tkbctf{").removesuffix("}").encode()
+assert len(flag) == 60
+m = bytes_to_long(flag)
+p = getPrime(512)
+q = getPrime(512)
+assert gcd((p - 1) * (q - 1), e) == 1
+n = p * q
+c = pow(m, e, n)
+hint1 = n % m
+hint2 = n % (m + e)
+
+print(f"{n=}")
+print(f"{e=}")
+print(f"{c=}")
+print(f"{hint1=}")
+print(f"{hint2=}")
+```
+
+# Solution
+Compared to Single Hint RSA, the output of `hint2 = n % (m + e)` is added. Additionally, the plaintext length is halved from 120 bytes to 60 bytes.
+It may seem like we simply have more hints, but the Single Hint RSA solution does not apply directly. In Single Hint RSA, $m$ was long and $k = \lfloor n/m \rfloor$ was small enough that $k^e$ was smaller than $n$ and could be extracted directly. This time, however, since $m$ is half the length, $k$ becomes larger, and $k^e$ greatly exceeds $n$. Therefore, the approach of recovering $k$ directly from $k^e \bmod n$ does not work.
+
+## Constructing the Polynomials
+
+Let $k := \lfloor n/m \rfloor$, so $n = km + \mathrm{hint1}$ holds exactly. Similarly, let $\ell := \lfloor n/(m+e) \rfloor$, so $n = \ell(m+e) + \mathrm{hint2}$ holds. Setting $d := k - \ell$, we obtain the following three equations:
+
+$$\begin{cases} km + \mathrm{hint1} - n = 0 & \cdots (1) \\ (k-d)(m+e) + \mathrm{hint2} - n = 0 & \cdots (2) \\ m^e - c \equiv 0 \pmod{n} & \cdots (3) \end{cases}$$
+
+Experiments confirm that $d = k - \ell$ is about $2^{70}$, a fairly small value.
+
+## Variable Elimination
+
+We eliminate $k$ from $(1)$ and $(2)$. You can compute this by hand, but for polynomial variable elimination we can use the resultant. In SageMath, `f.resultant(g, x)` can be used.
+
+Eliminating $k$ gives a polynomial in $d$ and $m$ only:
+
+$$f(d, m) = -dm(m+e) + (\mathrm{hint2} - \mathrm{hint1})m - \mathrm{hint1} \cdot e + ne = 0 \quad \cdots (4)$$
+
+## Solving with Multivariate Coppersmith
+
+Applying Multivariate Coppersmith to the two-variable challenge formed by $(4)$ and $(3)$ together, we can find the small common root $(d, m)$ where $m \approx 2^{480}$ and $d \approx 2^{70}$.
+
+Using the library [keeganryan/cuso](https://github.com/keeganryan/cuso), we can search for small roots by just providing multiple polynomials and upper/lower bounds on the variables.
+
+The solvable range in Multivariate Coppersmith depends on how the shift polynomials are constructed internally. Since `cuso` automatically searches for an appropriate construction, it can solve a wider range of problems than libraries like [defund/coppersmith](https://github.com/defund/coppersmith) that use simpler constructions. This challenge is also set outside the range solvable by `defund/coppersmith`.
+
+The solver is as follows.
+
+<details>
+<summary>Solver (cuso version, click to expand)</summary>
+```python showLineNumbers
+from sage.all import *
+from Crypto.Util.number import long_to_bytes, bytes_to_long
+import ast
+import cuso
+
+with open("../distfiles/output.txt", "r") as f:
+    n = ast.literal_eval(f.readline().removeprefix("n="))
+    e = ast.literal_eval(f.readline().removeprefix("e="))
+    c = ast.literal_eval(f.readline().removeprefix("c="))
+    hint1 = ast.literal_eval(f.readline().removeprefix("hint1="))
+    hint2 = ast.literal_eval(f.readline().removeprefix("hint2="))
+
+mlb = bytes_to_long(b"\x20"*60)
+mub = bytes_to_long(b"\x80"*60)
+
+PR = PolynomialRing(ZZ, "k, d, m")
+k, d, m = PR.gens()
+f1 = k*m+hint1
+f2 = (k-d)*(m+e)+hint2
+f3 = m**e-c
+f = f1.resultant(f2, k)
+g = f.resultant(f3, m)
+
+PR2 = PolynomialRing(Zmod(n), "d, m")
+f = PR2(f)
+g = PR2(g)
+
+roots = cuso.find_small_roots(
+    [f, g],
+    bounds={
+        m: (mlb, mub),
+        d: (n//mub-n//(mub+e), n//mlb-n//(mlb+e)),
+    }
+)
+
+for root in roots:
+    print(long_to_bytes(root[m]))
+```
+</details>
+
+## Reducing to Univariate Coppersmith
+
+However, on reflection, further eliminating $m$ from $(4)$ and $(3)$ yields a univariate polynomial in $d$, from which we can apply Coppersmith directly. I didn't notice this until after the contest...
+
+$$h(d) := \mathrm{Res}_m(f, m^e - c) \equiv 0 \pmod{n}$$
+
+$h(d)$ is a degree-11 polynomial in $d$, and since $d \approx 2^{70} < n^{1/11} \approx 2^{93}$, the conditions for applying Coppersmith are satisfied. Once $d$ is found, substituting into $(4)$ and solving the resulting quadratic in $m$ gives $m$.
+
+```python showLineNumbers
+PR = PolynomialRing(ZZ, "k, d, m")
+k, d, m = PR.gens()
+f1 = k*m+hint1-n
+f2 = (k-d)*(m+e)+hint2-n
+f3 = m**e-c
+f = f1.resultant(f2, k)  # f(d,m) ≡ 0 (mod n)
+g = f.resultant(f3, m)   # h(d) ≡ 0 (mod n)
+
+h = g.univariate_polynomial().change_ring(Zmod(n)).monic()
+rec_d = ZZ(h.small_roots(X=2**72, epsilon=0.02)[0])
+
+h = f.subs(d=rec_d).univariate_polynomial()
+rec_m = h.roots()[0][0]
+print(long_to_bytes(rec_m))
+```

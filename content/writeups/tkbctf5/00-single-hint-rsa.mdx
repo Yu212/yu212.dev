@@ -1,0 +1,57 @@
+---
+title: "Single Hint RSA"
+categories: ["crypto"]
+solves: 111
+---
+# 問題
+次のスクリプトとその実行結果が与えられます。
+```python showLineNumbers
+import os
+from math import gcd
+from Crypto.Util.number import getPrime, bytes_to_long
+
+e = 11
+flag = os.environ.get("FLAG", f"tkbctf{{{"dummy"*24}}}")
+flag = flag.removeprefix("tkbctf{").removesuffix("}").encode()
+assert len(flag) == 120
+m = bytes_to_long(flag)
+p = getPrime(512)
+q = getPrime(512)
+assert gcd((p - 1) * (q - 1), e) == 1
+n = p * q
+c = pow(m, e, n)
+hint1 = n % m
+
+print(f"{n=}")
+print(f"{e=}")
+print(f"{c=}")
+print(f"{hint1=}")
+```
+
+# 解法
+追加で `hint1 = n % m` が与えられています。これは $k = \lfloor n/m \rfloor$ を用いて $n = k m + \mathrm{hint1}$ の形に書けるので、$n - \mathrm{hint1} = k m$ が成り立ちます。
+
+暗号文は $c = m^e \bmod n$ なので、両方を使って $(n - \mathrm{hint1})^e \cdot c^{-1} \equiv (k m)^e \cdot m^{-e} \equiv k^e \pmod n$ を作れます。つまり $k^e \bmod n$ が得られます。
+
+ここで、$k$ の大きさを見積もってみましょう。$m$ は 120 bytes (= 960 bit) で、$n$ は 1024 bit 程度なので、$k = \lfloor n/m \rfloor \approx 2^{64}$ とかなり小さい値です。$e = 11$ なので $k^e$ は高々 $2^{64\cdot 11} = 2^{704}$ 程度になり、$n$ と比べても小さい値となっていることがわかります。
+よって $k^e \bmod n$ は $k^e$ と等しくなっており、ここから $e$ 乗根を取れば $k$ が復元できます。
+
+$k$ が分かれば $m = (n - \mathrm{hint1}) \cdot k^{-1} \pmod n$ で $m$ を復元し、`long_to_bytes` でフラグが得られます。
+
+ソルバは以下のようになります。
+```python showLineNumbers
+from sympy import integer_nthroot
+from Crypto.Util.number import long_to_bytes
+import ast
+
+with open("../distfiles/output.txt", "r") as f:
+    n = ast.literal_eval(f.readline().removeprefix("n="))
+    e = ast.literal_eval(f.readline().removeprefix("e="))
+    c = ast.literal_eval(f.readline().removeprefix("c="))
+    hint1 = ast.literal_eval(f.readline().removeprefix("hint1="))
+
+t = pow(n - hint1, e, n) * pow(c, -1, n) % n
+k, _ = integer_nthroot(t, e)
+m = (n - hint1) * pow(k, -1, n) % n
+print(long_to_bytes(m))
+```

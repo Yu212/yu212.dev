@@ -1,0 +1,209 @@
+---
+title: "BINARY IN THE FUTURE."
+categories: ["rev"]
+solves: 64
+---
+# Challenge
+Only an executable binary is distributed. Running it accepts 48 characters of input, and if the result after repeating an internal transformation 100000 times matches, it outputs `tkbctf{input}`.
+
+# Solution
+
+Trying to decompile the distributed binary should produce errors in most decompilers.
+In Binary Ninja, instructions like `__ldtilecfg_mem` and `__tdpbuud_tmmu32_tmm4u8_tmm4u8` can be seen, but decompilation fails after that.
+Also, running it normally outputs `Your environment is too old for this binary!` and exits.
+The distributed Dockerfile runs `sde64 -future -- /app/binary-in-the-future`, which tells us that
+this binary is compiled for future CPUs and cannot be run directly in the current environment.
+
+Disassembling with `objdump` reveals unfamiliar instructions like `tilemovrow %eax,%tmm5,%zmm0` and `tdpbuud %tmm1,%tmm0,%tmm4`. These are Intel AMX instructions.
+AMX is a new instruction set announced in 2021, supported only on some CPUs such as Xeon.
+In particular, `AMX-AVX512` instructions such as `tilemovrow` are planned to be supported only on CPUs starting from `Diamond Rapids`, and as of March 2026 no released CPU supports them.
+`GCC` and `objdump` already support these instructions, but most decompilers do not yet, which is why decompilation fails.
+
+For AMX instructions, the following article is helpful. (This is actually an article I wrote during an internship.)
+
+https://zenn.dev/fixstars/articles/amx-introduction
+
+The pre-compilation code was as follows.
+
+<details>
+<summary>Pre-compilation code (click to expand)</summary>
+```c
+
+#include <immintrin.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <cstring>
+
+#define ARCH_REQ_XCOMP_PERM 0x1023
+#define XFEATURE_XTILEDATA  18
+
+typedef struct tileconfig_t {
+    uint8_t  palette_id;
+    uint8_t  startRow;
+    uint8_t  reserved[14];
+    uint16_t colb[16];
+    uint8_t  rows[16];
+} tileconfig_t;
+
+const uint8_t mat[2304] = {
+    0,1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,
+    0,1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,
+    0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,1,1,1,1,
+
+};
+
+const tileconfig_t config = {
+    .palette_id = 1,
+    .startRow   = 0,
+    .reserved = {0},
+    .colb = { 48, 64, 64, 64, 64, 64, 64 },
+    .rows = { 4, 12, 12, 12, 4, 4, 4 }
+};
+
+const uint8_t correct[192] = {
+    116,180,186,0,219,64,88,156,207,211,240,56,191,199,95,45,193,23,236,254,38,4,230,214,126,66,234,104,152,6,226,136,168,98,250,231,139,125,161,189,225,216,78,137,247,36,80,64,
+    222,53,34,159,109,139,173,78,194,105,156,42,217,171,73,121,102,140,18,72,181,246,199,98,215,56,6,9,141,36,212,99,91,113,229,128,203,105,46,193,6,171,6,222,76,142,245,133,
+    199,167,139,133,53,0,195,82,146,142,106,206,181,70,75,70,223,8,75,209,85,250,188,83,63,238,195,239,185,239,115,241,66,99,159,23,182,38,204,219,138,190,103,8,201,162,34,32,
+    157,139,24,29,207,207,111,46,231,2,139,149,7,103,75,94,210,205,143,107,208,106,50,240,147,37,229,83,176,198,180,76,8,173,60,229,100,177,117,43,85,100,71,207,186,59,76,199,
+};
+
+int main(void) {
+    if (!__builtin_cpu_supports("amx-avx512")) {
+        printf("Your environment is too old for this binary!\n");
+        return -1;
+    }
+    char buf[49];
+    uint32_t* arr = (uint32_t*)malloc(192);
+    printf("Give me your input: ");
+    fflush(stdout);
+
+    ssize_t n = read(0, buf, 49);
+    if (buf[n - 1] == '\n') {
+        buf[n - 1] = '\0';
+    }
+    if (strlen(buf) != 48) {
+        printf("Wrong :(\n");
+        return 1;
+    }
+    for (size_t i = 0; i < 48; i++) {
+        arr[i] = (uint32_t)buf[i];
+    }
+
+    _tile_loadconfig(&config);
+    _tile_loadd(1, mat, 64);
+    _tile_loadd(2, mat + 768, 64);
+    _tile_loadd(3, mat + 1536, 64);
+
+    for (int t = 0; t < 100000; t++) {
+        _tile_loadd(0, arr, 48);
+        _tile_dpbuud(4, 0, 1);
+        _tile_dpbuud(5, 0, 2);
+        _tile_dpbuud(6, 0, 3);
+        for (int i = 0; i < 4; i++) {
+            _mm512_mask_compressstoreu_epi8(arr + 12 * i + 0, 0x1111111111111111, (__m512i)_tile_movrow(4, i));
+            _mm512_mask_compressstoreu_epi8(arr + 12 * i + 4, 0x1111111111111111, (__m512i)_tile_movrow(5, i));
+            _mm512_mask_compressstoreu_epi8(arr + 12 * i + 8, 0x1111111111111111, (__m512i)_tile_movrow(6, i));
+        }
+    }
+
+    if (memcmp(arr, &correct, 192) == 0) {
+        printf("Correct! The flag is tkbctf{%s}\n", buf);
+    } else {
+        printf("Wrong :(\n");
+    }
+    _tile_release();
+    free(arr);
+    return 0;
+}
+```
+</details>
+
+Here is a detailed explanation of the code.
+
+Looking at `config`, `tmm0` is used as `4 x 48 bytes`, `tmm1`, `tmm2`, `tmm3` as `12 x 64 bytes`, and `tmm4`, `tmm5`, `tmm6` as `4 x 64 bytes`.
+`_tile_dpbuud(dst, a, b)` is an instruction that takes the dot product of each row of `a` and each column of `b` with unsigned bytes, and adds the result to the 32-bit integers in `dst`.
+Therefore, from `tmm0` and `tmm1`, `tmm4` contains `4 x 16` 32-bit integers. Similarly `tmm5`, `tmm6` are computed using `tmm2`, `tmm3`, so per loop iteration a total of 48 32-bit integers are updated.
+
+The subsequent `_tile_movrow` and `_mm512_mask_compressstoreu_epi8` use mask `0x1111111111111111`, which extracts only the lowest 1 byte of each 32-bit integer and packs them back into `arr`.
+Therefore, this entire operation can be treated as a linear transformation modulo 256.
+
+Viewing the 48-byte state as a row vector $a$, each transformation has the form $a \mapsto aM$.
+However, $M$ is not `mat` directly but must be converted considering the special memory layout in AMX.
+
+An important point is that the tile initialization instruction `tilezero` is not called inside the loop. Since `_tile_dpbuud` is an accumulate instruction, normally `_tile_zero(4)`, `_tile_zero(5)`, `_tile_zero(6)` would be called at the start of each loop to initialize the output tiles.
+Since these are not called in this code, tile registers 4, 5, 6 retain the values from the previous loop iteration.
+At `_tile_loadconfig` the tile registers are initialized, so only the first loop iteration is simply $a \mapsto aM$, but from the second iteration onwards the previous value is accumulated, making the transition $a \mapsto a(M+I)$.
+
+Therefore, if the state after 100000 iterations is `correct`, the original input can be recovered by the inverse transformation
+$correct \cdot M^{-1} \cdot (M+I)^{-99999}$.
+Since `correct` is split into 4 blocks of 48 bytes each, this computation can be performed for each block.
+
+Finally, note that in the initial state:
+
+```c
+for (size_t i = 0; i < 48; i++) {
+    arr[i] = (uint32_t)buf[i];
+}
+```
+
+each character is placed as only 1 byte every 4 bytes.
+Therefore, taking `[::4]` from the 48 elements after inverse transformation gives the original 12 characters. Concatenating 4 blocks gives the full input, i.e., the flag.
+Since the matrix size is large, use a numerical library like `numpy` or compute using repeated squaring.
+
+The solver is as follows.
+
+<details>
+<summary>Solver (click to expand)</summary>
+```python showLineNumbers
+from sage.all import *
+
+with open("./binary-in-the-future", "rb") as f:
+    b = f.read()
+
+a = [list(b[0x3960+48*i:0x3960+48*(i+1)]) for i in range(4)]
+M = matrix(Zmod(256), [[b[0x3020 + ((j // 16) * 12 + i // 4) * 64 + (j % 16) * 4 + i % 4] for j in range(48)] for i in range(48)])
+I = identity_matrix(48)
+
+flag = b""
+for i in range(4):
+    b = vector(Zmod(256), a[i]) * M**-1 * (M+I)**-99999
+    flag += bytes(b[::4])
+print(flag)
+```
+</details>

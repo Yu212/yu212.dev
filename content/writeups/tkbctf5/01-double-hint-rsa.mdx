@@ -1,0 +1,129 @@
+---
+title: "Double Hint RSA"
+categories: ["crypto"]
+solves: 28
+---
+# 問題
+次のスクリプトとその実行結果が与えられます。
+```python showLineNumbers
+import os
+from math import gcd
+from Crypto.Util.number import getPrime, bytes_to_long
+
+e = 11
+flag = os.environ.get("FLAG", f"tkbctf{{{"dummy"*12}}}")
+flag = flag.removeprefix("tkbctf{").removesuffix("}").encode()
+assert len(flag) == 60
+m = bytes_to_long(flag)
+p = getPrime(512)
+q = getPrime(512)
+assert gcd((p - 1) * (q - 1), e) == 1
+n = p * q
+c = pow(m, e, n)
+hint1 = n % m
+hint2 = n % (m + e)
+
+print(f"{n=}")
+print(f"{e=}")
+print(f"{c=}")
+print(f"{hint1=}")
+print(f"{hint2=}")
+```
+
+# 解法
+Single Hint RSA と比べて `hint2 = n % (m + e)` の出力が追加されています。加えて、平文の長さが 120 bytes から 60 bytes に短くなっています。
+単にヒントが増えているだけのように思えますが、Single Hint RSA の解法はそのままでは使えません。Single Hint RSA では $m$ が長く $k = \lfloor n/m \rfloor$ が十分小さいため、$k^e$ が $n$ より小さくなりそのまま取り出せました。一方今回は $m$ が半分の長さになったことで $k$ が大きくなり、$k^e$ は $n$ を大きく超えます。よって $k^e \bmod n$ から直接 $k$ を復元する流れは成立しません。
+
+## 多項式の構成
+
+$k := \lfloor n/m \rfloor$ とおくと $n = km + \mathrm{hint1}$ が厳密に成り立ちます。同様に $\ell := \lfloor n/(m+e) \rfloor$ とおくと $n = \ell(m+e) + \mathrm{hint2}$ も成り立ちます。ここで $d := k - \ell$ とおくと、次の 3 式が得られます。
+
+$$\begin{cases} km + \mathrm{hint1} - n = 0 & \cdots (1) \\ (k-d)(m+e) + \mathrm{hint2} - n = 0 & \cdots (2) \\ m^e - c \equiv 0 \pmod{n} & \cdots (3) \end{cases}$$
+
+ここで $d = k - \ell$ は $2^{70}$ 程度とかなり小さい値となることが実験で確かめられます。
+
+## 変数消去
+
+$(1)(2)$ から $k$ を消去します。手計算で丁寧に計算してもよいですが、こういった多項式の変数消去には終結式（resultant）という道具が使えます。SageMath では `f.resultant(g, x)` とすると使えます。
+
+$k$ を消去すると $d, m$ だけの多項式が得られます。
+
+$$f(d, m) = -dm(m+e) + (\mathrm{hint2} - \mathrm{hint1})m - \mathrm{hint1} \cdot e + ne = 0 \quad \cdots (4)$$
+
+## Multivariate Coppersmith を使う方法
+
+$(4)$ と $(3)$ を連立した 2 変数問題として Multivariate Coppersmith を適用すると、$m \approx 2^{480}$、$d \approx 2^{70}$ という小さい共通根 $(d, m)$ を求めることができます。
+
+[keeganryan/cuso](https://github.com/keeganryan/cuso) というライブラリを使うと複数の多項式と変数の上下界を渡すだけで小さい根を探索できます。
+
+Multivariate Coppersmith は内部で使う shift polynomial の構成方法により解ける範囲が変わります。`cuso` は適切な構成を自動探索するため、[defund/coppersmith](https://github.com/defund/coppersmith) のような簡単な構成を行うライブラリより広い範囲の問題を解くことができます。この問題も `defund/coppersmith` では解けない範囲に設定されています。
+
+ソルバは以下のようになります。
+
+<details>
+<summary>ソルバ（cuso 版・クリックで展開）</summary>
+```python showLineNumbers
+from sage.all import *
+from Crypto.Util.number import long_to_bytes, bytes_to_long
+import ast
+import cuso
+
+with open("../distfiles/output.txt", "r") as f:
+    n = ast.literal_eval(f.readline().removeprefix("n="))
+    e = ast.literal_eval(f.readline().removeprefix("e="))
+    c = ast.literal_eval(f.readline().removeprefix("c="))
+    hint1 = ast.literal_eval(f.readline().removeprefix("hint1="))
+    hint2 = ast.literal_eval(f.readline().removeprefix("hint2="))
+
+mlb = bytes_to_long(b"\x20"*60)
+mub = bytes_to_long(b"\x80"*60)
+
+PR = PolynomialRing(ZZ, "k, d, m")
+k, d, m = PR.gens()
+f1 = k*m+hint1
+f2 = (k-d)*(m+e)+hint2
+f3 = m**e-c
+f = f1.resultant(f2, k)
+g = f.resultant(f3, m)
+
+PR2 = PolynomialRing(Zmod(n), "d, m")
+f = PR2(f)
+g = PR2(g)
+
+roots = cuso.find_small_roots(
+    [f, g],
+    bounds={
+        m: (mlb, mub),
+        d: (n//mub-n//(mub+e), n//mlb-n//(mlb+e)),
+    }
+)
+
+for root in roots:
+    print(long_to_bytes(root[m]))
+```
+</details>
+
+## 一変数 Coppersmith に帰着する方法
+
+が、よく考えると$(4)$ と $(3)$から更に$m$を削除すると$d$の1変数多項式が得られるので、そこから普通にCoppersmithを使うと解けます。コンテストが終わるまで気づきませんでした……
+
+$$h(d) := \mathrm{Res}_m(f, m^e - c) \equiv 0 \pmod{n}$$
+
+$h(d)$ は $d$ について 11 次の多項式で、$d \approx 2^{70} < n^{1/11} \approx 2^{93}$ なので Coppersmith の適用条件を満たします。$d$ が求まれば $(4)$ に代入して $m$ についての 2 次多項式を解けば $m$ が得られます。
+
+```python showLineNumbers
+PR = PolynomialRing(ZZ, "k, d, m")
+k, d, m = PR.gens()
+f1 = k*m+hint1-n
+f2 = (k-d)*(m+e)+hint2-n
+f3 = m**e-c
+f = f1.resultant(f2, k)  # f(d,m) ≡ 0 (mod n)
+g = f.resultant(f3, m)   # h(d) ≡ 0 (mod n)
+
+h = g.univariate_polynomial().change_ring(Zmod(n)).monic()
+rec_d = ZZ(h.small_roots(X=2**72, epsilon=0.02)[0])
+
+h = f.subs(d=rec_d).univariate_polynomial()
+rec_m = h.roots()[0][0]
+print(long_to_bytes(rec_m))
+```

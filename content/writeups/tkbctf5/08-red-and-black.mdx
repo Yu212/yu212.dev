@@ -1,0 +1,371 @@
+---
+title: "Red and Black"
+categories: ["rev"]
+solves: 3
+---
+# 問題
+
+バイナリが配布されます。実行すると 13 文字の入力が求められ、その後 `B` と `R` からなる 200 文字の文字列を出力します。
+
+# 解法
+
+## `main` の解析
+
+`main` をデコンパイルすると次のような処理をしていることがわかります。
+
+1. `./flag.txt` から 39 バイト読み込む
+2. 標準入力から 13 バイト読み込む
+3. フラグを `sub_401a29(0x45bde0, &flag_buf)`、入力を `sub_401a29(0x45d160, &input_buf)` として配列に書き込む
+4. `data_4040a0` にある命令テーブルを 4 要素ずつループし、先頭要素を関数ポインタとして残り 3 要素を引数に呼び出す
+5. 配列の先頭 100 要素をもとに `B`/`R` からなる文字列を出力する
+
+ステップ 3 で呼ばれている `sub_401a29` を読みます。内部のループ部分は次のとおりです。
+
+```
+00401a5f            char rax_4 = *(i + arg2)
+00401abf            for (int64_t j = 0; j u<= 7; j += 1) {
+00401aa3                char** rbx_1 = ((j + (i << 3)) << 4) + arg1
+00401aa9                char* rax_9
+00401aa9                int64_t rdx_7
+00401aa9                rax_9, rdx_7 = sub_4012b4((zx.d(rax_4) s>> j.b).b & 1)
+00401aae                *rbx_1 = rax_9
+00401ab1                rbx_1[1] = rdx_7
+00401abf            }
+```
+
+各バイトの各ビットを取り出して `sub_4012b4` に渡し、返ってきた 2 つのポインタをペアで格納しています。`sub_4012b4` は以下のようになっています。
+
+```
+004012b4    char* sub_4012b4(char arg1)
+004012c7        char* result = sub_40127b(arg1)
+004012e2        char* var_10 = sub_40127b(1 - arg1)
+004012ef        return result
+```
+
+`sub_40127b` は `malloc(1)` して引数の値を書き込むだけです。つまり `sub_4012b4(bit)` はヒープに 1 バイトを 2 個確保し、それぞれ `bit` と `1-bit` を書き込んだポインタのペアを返します。
+`sub_401a29` ではこの 2 ポインタを配列の 1 つのスロットにそのまま並べて書き込んでいます。以降この書き込み先の配列を pool と呼ます。
+`sub_401a29` の引数のアドレス差（`0x45d160 - 0x45bde0 = 0x1380 = 312 x 16 byte`）から、フラグは `pool[0:312]` に、入力は `pool[312:416]` に入ります。
+
+ステップ 5 の出力ループでは `pool` の先頭 100 組について `"BR"[*pool[i][0]]` と `"BR"[*pool[i][1]]` を出力しています。出力を観察すると2文字ごとに`BR`または`RB`のいずれかの組となっていることから、各ペアが`bit` と `1-bit`の組となっていることは最後まで保たれていそうです。
+
+命令テーブルには 5 種類の関数ポインタが現れます。
+
+## `sub_401468` の解析
+
+まずは `sub_401468` を詳しく読みます。冒頭で `sub_4012b4(0)` を呼んで補助ペアを 1 つ生成し、`arg1`・`arg2` のペアと合わせた 6 つのポインタを `sub_401206` でシーケンスにまとめます。
+
+```
+00401490        rax_2, rdx = sub_4012b4(0)
+004014a1        char* var_48 = rax_2          // aux.left  = ptr(0)
+004014a9        int64_t var_40 = rdx          // aux.right = ptr(1)
+004014b4        int64_t var_38 = arg1[0]      // a.left
+004014c0        int64_t var_30 = arg1[1]      // a.right
+004014cb        int64_t var_28 = arg2[0]      // b.left
+004014d7        int64_t var_20 = arg2[1]      // b.right
+004014e7        int64_t* rax_13 = sub_401206(&var_48, 6)
+```
+
+`sub_401206` は長さをインデックス 0 に持つ配列を確保するため、`rax_13[1..6]` = `[aux.L, aux.R, a.L, a.R, b.L, b.R]` です。続いて `sub_401301`（2 要素を swap する関数）と `sub_401334` を呼びます。
+
+`sub_401334` は次のとおりです。
+
+```
+00401334    uint64_t sub_401334(int64_t* arg1)
+00401345        uint64_t result = zx.q(rand()) & 1
+0040134a        if (result.d != 0) {
+0040134c            int64_t var_10_1 = 0
+004013ab            while (true) {
+004013ab                result = *arg1 u>> 1
+004013b2                if (var_10_1 u>= result)
+004013b2                    break
+0040139a                sub_401301(&arg1[var_10_1 + 1], &arg1[var_10_1 + (*arg1 u>> 1) + 1])
+0040139f                var_10_1 += 1
+004013ab            }
+0040134a        }
+```
+
+`rand() & 1` が 0 なら何もせず、1 なら 前半分と後ろ半分を入れ替える操作を行っています。
+
+```
+00401511            sub_401301(&rax_13[4], &rax_13[5])
+0040152c            sub_401301(&rax_13[3], &rax_13[4])
+00401538            sub_401334(rax_13)
+00401553            sub_401301(&rax_13[3], &rax_13[4])
+0040156e            sub_401301(&rax_13[4], &rax_13[5])
+```
+
+最後に `sub_4012f0(rax_13[5])` で `rax_13[5]`の値によって出力となる値を選びます。
+
+```
+00401585            if (sub_4012f0(rax_13[5]) == 0) {
+004015b4                arg3[0] = rax_13[2]
+004015c3                arg3[1] = rax_13[1]
+00401585            } else {
+00401593                arg3[0] = rax_13[4]
+004015a2                arg3[1] = rax_13[3]
+00401585            }
+```
+
+`sub_401334`内の`rand() & 1`の結果と`a`,`b`の値の組み合わせ8通りについて `rax_13[1..6]` の並びと出力を追うと、それぞれ以下のようになります。
+
+| `rand() & 1` | `a` | `b` | `rax_13[1..6]` | `arg3` |
+|---|---|---|---|---|
+| 0 | `[0, 1]` | `[0, 1]` | `[ptr(0), ptr(1), a.L, a.R, b.L, b.R]` | `[1, 0]` |
+| 0 | `[0, 1]` | `[1, 0]` | `[ptr(0), ptr(1), a.L, a.R, b.L, b.R]` | `[1, 0]` |
+| 0 | `[1, 0]` | `[0, 1]` | `[ptr(0), ptr(1), a.L, a.R, b.L, b.R]` | `[1, 0]` |
+| 0 | `[1, 0]` | `[1, 0]` | `[ptr(0), ptr(1), a.L, a.R, b.L, b.R]` | `[0, 1]` |
+| 1 | `[0, 1]` | `[0, 1]` | `[a.L, a.R, ptr(0), ptr(1), b.R, b.L]` | `[1, 0]` |
+| 1 | `[0, 1]` | `[1, 0]` | `[a.L, a.R, ptr(0), ptr(1), b.R, b.L]` | `[1, 0]` |
+| 1 | `[1, 0]` | `[0, 1]` | `[a.L, a.R, ptr(0), ptr(1), b.R, b.L]` | `[1, 0]` |
+| 1 | `[1, 0]` | `[1, 0]` | `[a.L, a.R, ptr(0), ptr(1), b.R, b.L]` | `[0, 1]` |
+
+この表から、`sub_401468`は`rand() & 1`の結果に関わらず、`a`と`b`のNANDの値を出力していることがわかります。
+
+## カードベース暗号について
+
+この実装の背景にあるのはカードベース暗号です。赤・黒 2 色の"カード"を使って秘密計算を行う手法で、各ビットをカードペアとして表現します。
+
+$$(\text{Black},\ \text{Red}) = 0, \qquad (\text{Red},\ \text{Black}) = 1$$
+
+2 枚のカードを裏向きで並べると、外から見えるのはカードの位置だけです。どちらが赤でどちらが黒かは区別できないため、ペアが表すビット値は秘密に保たれます。今回のプロトコルは random bisection cut を用いており、`sub_401468` で確認したように最終出力はカットの有無に依存しません。
+
+## 残りの演算の解析
+
+### `0x4013B7`
+
+`arg1` の 2 ポインタを 2 要素列にまとめ、1 回 swap して `arg2` に書き出します。
+
+```
+004013f9        int64_t* rax_5 = sub_401206(&var_28, 2)
+
+0040141f        sub_401301(&rax_5[1], &rax_5[2])
+00401430        arg2[0] = rax_5[1]
+0040143f        arg2[1] = rax_5[2]
+```
+
+初期状態 `[a.L, a.R]` を swap すると `[a.R, a.L]` になります。`arg2 = [ptr(1-a), ptr(a)]` なので bit = 1-a、すなわち NOT です。
+
+### `0x4015EC`
+
+`[a.L, a.R, b.L, b.R]` の 4 要素列で swap・ランダムカット・swap を行い、`rax_9[1]` の値を開封して条件分岐します。
+
+```
+00401673            sub_401301(&rax_9[2], &rax_9[3])
+0040167f            sub_401334(rax_9)
+0040169a            sub_401301(&rax_9[2], &rax_9[3])
+004016b1            if (sub_4012f0(rax_9[1]) != 0)
+004016c9                sub_401301(&rax_9[3], &rax_9[4])
+004016da            arg3[0] = rax_9[3]
+004016e9            arg3[1] = rax_9[4]
+```
+
+結果は次のとおりです。
+
+| `rand() & 1` | `rax_9[1..4]` |
+|---|---|
+| 0 | `[a.L, a.R, b.L, b.R]` |
+| 1 | `[a.R, a.L, b.R, b.L]` |
+
+両パターンともに `rax_9[1]` の値が `a` と等価になり、`if != 0` の条件は「a=1 のとき swap」と同じ効果を持ちます。結果として `arg3` は常に $a \oplus b$ になります。
+
+### `0x401824`
+
+`sub_4012b4(0)` を 2 回呼んで補助ペアを 2 つ生成し、`[a.L, a.R, ptr(0), ptr(1), ptr(0), ptr(1)]` の 6 要素列で 3 回 swap・ランダムカット・3 回 swap を行います。
+
+```
+004018de            sub_401301(&rax_12[2], &rax_12[3])
+004018f9            sub_401301(&rax_12[4], &rax_12[5])
+00401914            sub_401301(&rax_12[3], &rax_12[4])
+00401920            sub_401334(rax_12)
+0040193b            sub_401301(&rax_12[3], &rax_12[4])
+00401956            sub_401301(&rax_12[4], &rax_12[5])
+00401971            sub_401301(&rax_12[2], &rax_12[3])
+00401988            if (sub_4012f0(rax_12[1]) != 0) {
+004019a0                sub_401301(&rax_12[3], &rax_12[4])
+004019bb                sub_401301(&rax_12[5], &rax_12[6])
+00401988            }
+004019cc            arg2[0] = rax_12[3]
+004019db            arg2[1] = rax_12[4]
+004019ee            arg3[0] = rax_12[5]
+004019ee            arg3[1] = rax_12[6]
+```
+
+`rand() & 1`の0/1と a=0/1 の 4 通りを追うと、`rax_12[1]` の開封値に応じた条件 swap によって常に `arg2 = arg3 = a` になります。すなわち、`a`の値を`arg2,arg3` にコピーする操作です。
+
+### `0x401712`
+
+`sub_401712` をデコンパイルすると、XOR（`sub_4015ec`）と同じスワップ・ランダムカット・スワップを行いますが、最後の書き出し先が異なります。`xor` が第 3 引数 `arg3` に書き出すのに対し、
+
+```
+// sub_4015ec (xor) の末尾
+004016da            arg3[0] = rax_9[3]
+004016e9            arg3[1] = rax_9[4]
+```
+
+`entangle` は 4 枚すべてを入力の `arg1,arg2` に書き戻しています。
+
+```
+// sub_401712 (entangle) の末尾
+004017cd            arg1[0] = rax_9[1]
+004017dc            arg1[1] = rax_9[2]
+004017ec            arg2[0] = rax_9[3]
+004017fb            arg2[1] = rax_9[4]
+```
+
+カットが起きなければ 2 ペアとも変化せず、起きると両方がビット反転します。ランダムビット $r$ を用いると
+
+$$a \leftarrow a \oplus r, \qquad b \leftarrow b \oplus r$$
+
+と等価です。同一のランダムビット $r$ が `a`と`b` の両方に XOR されるため、他の演算と異なり出力が`rand() & 1`の結果に依存します。
+
+## z3 によるモデル化
+
+フラグの各ビットと`entangle`の呼び出しごとの$r$の値を未知変数とし、バイナリから読み出した `prog[]` をブール回路として z3 でモデル化します。
+
+`entangle` は `prog[]`内で20 回呼びだされていることから、未知の値は全体で$39 \times 8 + 20 = 332$ bitあります。しかし、出力は100bit分の情報量しかないため、適当な入力を与えた結果を用いて解いても、残念ながら解は一意には求まりません。
+
+ところで、バイナリは接続のたびに `getrandom` で `rand` を再シードするため、別クエリの `entangle` 変数は互いに独立です。また、入力もランダムに与えると毎回異なるビット列が出力され、新たな制約が得られます。
+20回程度ランダムな入力を与えてクエリを重ね、加えてフラグフォーマット（`tkbctf{[\x20-\x7f]}`）も制約として追加すると解が一意に定まります。
+
+ソルバーは以下のようになります。
+
+<details>
+<summary>ソルバ（クリックで展開）</summary>
+```python showLineNumbers
+import random
+import struct
+from typing import List, Tuple
+from pwn import *
+from z3 import *
+
+
+FLAG_LEN = 13 * 3
+INPUT_LEN = 13
+POOL_LEN = (FLAG_LEN + INPUT_LEN) * 8 + 2
+
+FN_ADDRS_VA = {
+    0x004013B7: "not",
+    0x00401468: "nand",
+    0x004015EC: "xor",
+    0x00401712: "entangle",
+    0x00401824: "copy",
+}
+
+def read_prog(path: str) -> List[Tuple[str, int, int, int]]:
+    with open(path, "rb") as f:
+        data = f.read()
+
+    qword = struct.Struct("<Q")
+    pool_base = -1
+
+    ops: List[Tuple[str, int, int, int]] = []
+    for i in range(0, len(data), 32):
+        fnp = qword.unpack_from(data, 0x30a0 + i)[0]
+        if fnp not in FN_ADDRS_VA:
+            pool_base = i + 0x004040a0 + 0x20
+            break
+        fn_name = FN_ADDRS_VA[fnp]
+        a = qword.unpack_from(data, 0x30a0 + i + 8)[0]
+        b = qword.unpack_from(data, 0x30a0 + i + 16)[0]
+        c = qword.unpack_from(data, 0x30a0 + i + 24)[0]
+        ops.append((fn_name, a, b, c))
+
+    normalized: List[Tuple[str, int, int, int]] = []
+    for fn, a, b, c in ops:
+        ia = (a - pool_base) // 16
+        ib = (b - pool_base) // 16
+        ic = (c - pool_base) // 16
+        normalized.append((fn, ia, ib, ic))
+    return normalized
+
+
+def run_binary(payload: bytes) -> List[int]:
+    sc = remote("localhost", 1337)
+    
+    sc.recvuntil(b": ")
+    sc.sendline(payload)
+    raw = sc.recvline().rstrip()
+    return [1 if raw[i*2:i*2+2] == b"RB" else 0 for i in range(100)]
+
+
+def bits_from_input(data: bytes) -> List[bool]:
+    return [bool((b >> i) & 1) for b in data for i in range(8)]
+
+
+def eval_ops(
+    ops: List[Tuple[str, int, int, int]],
+    input_bits: List[bool],
+    flag_bits: List,
+    entangle_prefix: str,
+) -> List:
+    pool = [BoolVal(False)] * POOL_LEN
+    for i in range(FLAG_LEN * 8):
+        pool[i] = flag_bits[i]
+    for i in range(INPUT_LEN * 8):
+        pool[FLAG_LEN * 8 + i] = BoolVal(input_bits[i])
+
+    ent_i = 0
+    for fn, a, b, c in ops:
+        if fn == "copy":
+            pool[b] = pool[a]
+            pool[c] = pool[a]
+        elif fn == "not":
+            pool[b] = Not(pool[a])
+        elif fn == "xor":
+            pool[c] = Xor(pool[a], pool[b])
+        elif fn == "nand":
+            pool[c] = Not(And(pool[a], pool[b]))
+        elif fn == "entangle":
+            r = Bool(f"{entangle_prefix}_x{ent_i}")
+            ent_i += 1
+            pool[a] = Xor(pool[a], r)
+            pool[b] = Xor(pool[b], r)
+    return pool
+
+
+def solve(runs: int = 20):
+    ops = read_prog("./red-and-black")
+    flag_bits = [Bool(f"f{i}") for i in range(FLAG_LEN * 8)]
+    s = Solver()
+
+    prefix = b"tkbctf{"
+    for i, ch in enumerate(prefix):
+        for b in range(8):
+            s.add(flag_bits[i * 8 + b] == BoolVal(bool((ch >> b) & 1)))
+    last_idx = FLAG_LEN - 1
+    for b in range(8):
+        s.add(flag_bits[last_idx * 8 + b] == BoolVal(bool((ord('}') >> b) & 1)))
+    for i in range(len(prefix), FLAG_LEN - 1):
+        byte = Sum([If(flag_bits[i * 8 + b], 1 << b, 0) for b in range(8)])
+        s.add(byte >= 0x20, byte <= 0x7e)
+
+    rng = random.Random(1337)
+    for r in range(runs):
+        payload = bytes(rng.randint(0x20, 0x7f) for _ in range(INPUT_LEN))
+        out_bits = run_binary(payload)
+        input_bits = bits_from_input(payload)
+        pool = eval_ops(ops, input_bits, flag_bits, f"run{r}")
+        for i, bit in enumerate(out_bits):
+            s.add(pool[i] == BoolVal(bool(bit)))
+
+    while s.check() == sat:
+        m = s.model()
+        out = bytearray()
+        block = []
+        for i in range(FLAG_LEN):
+            v = 0
+            for b in range(8):
+                bit = flag_bits[i * 8 + b]
+                bit_val = m.eval(bit, model_completion=True)
+                if is_true(bit_val):
+                    v |= (1 << b)
+                block.append(bit != bit_val)
+            out.append(v)
+        print(bytes(out))
+        s.add(Or(block))
+
+
+if __name__ == "__main__":
+    solve()
+```
+</details>

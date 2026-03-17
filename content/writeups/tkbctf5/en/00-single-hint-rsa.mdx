@@ -1,0 +1,57 @@
+---
+title: "Single Hint RSA"
+categories: ["crypto"]
+solves: 111
+---
+# Challenge
+The following script and its output are given.
+```python showLineNumbers
+import os
+from math import gcd
+from Crypto.Util.number import getPrime, bytes_to_long
+
+e = 11
+flag = os.environ.get("FLAG", f"tkbctf{{{"dummy"*24}}}")
+flag = flag.removeprefix("tkbctf{").removesuffix("}").encode()
+assert len(flag) == 120
+m = bytes_to_long(flag)
+p = getPrime(512)
+q = getPrime(512)
+assert gcd((p - 1) * (q - 1), e) == 1
+n = p * q
+c = pow(m, e, n)
+hint1 = n % m
+
+print(f"{n=}")
+print(f"{e=}")
+print(f"{c=}")
+print(f"{hint1=}")
+```
+
+# Solution
+An additional `hint1 = n % m` is given. Using $k = \lfloor n/m \rfloor$, this can be written as $n = k m + \mathrm{hint1}$, so $n - \mathrm{hint1} = k m$ holds.
+
+Since the ciphertext is $c = m^e \bmod n$, we can combine both to obtain $(n - \mathrm{hint1})^e \cdot c^{-1} \equiv (k m)^e \cdot m^{-e} \equiv k^e \pmod n$. That is, we can obtain $k^e \bmod n$.
+
+Let us estimate the size of $k$. Since $m$ is 120 bytes (= 960 bits) and $n$ is about 1024 bits, $k = \lfloor n/m \rfloor \approx 2^{64}$, which is a fairly small value. Since $e = 11$, $k^e$ is at most about $2^{64 \cdot 11} = 2^{704}$, which is smaller than $n$.
+Therefore, $k^e \bmod n$ equals $k^e$ itself, and we can recover $k$ by taking the $e$-th root.
+
+Once $k$ is known, we recover $m = (n - \mathrm{hint1}) \cdot k^{-1} \pmod n$ and obtain the flag with `long_to_bytes`.
+
+The solver is as follows.
+```python showLineNumbers
+from sympy import integer_nthroot
+from Crypto.Util.number import long_to_bytes
+import ast
+
+with open("../distfiles/output.txt", "r") as f:
+    n = ast.literal_eval(f.readline().removeprefix("n="))
+    e = ast.literal_eval(f.readline().removeprefix("e="))
+    c = ast.literal_eval(f.readline().removeprefix("c="))
+    hint1 = ast.literal_eval(f.readline().removeprefix("hint1="))
+
+t = pow(n - hint1, e, n) * pow(c, -1, n) % n
+k, _ = integer_nthroot(t, e)
+m = (n - hint1) * pow(k, -1, n) % n
+print(long_to_bytes(m))
+```

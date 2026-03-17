@@ -1,0 +1,604 @@
+---
+title: "Expensive Operator"
+categories: ["crypto"]
+solves: 1
+---
+# 問題
+次のようなサーバが与えられます。
+```python showLineNumbers
+import os
+import signal
+import re
+from Crypto.Util.number import getPrime
+
+signal.alarm(150)
+
+flag = os.environ.get("FLAG", "tkbctf{dummy}")
+target = getPrime(512)
+print(f"{target = }")
+
+cost = 0
+variables = {"one": 1}
+while True:
+    expr = input(">>> ")
+    if not re.fullmatch(r"[a-z]+=[a-z]+[+*][a-z]+", expr):
+        print("SyntaxError")
+        continue
+    cost += expr.count("+")
+    exec(expr, {"__builtins__": None}, variables)
+    if expr.startswith("result="):
+        break
+
+if variables["result"] != target:
+    print("Wrong answer!")
+    exit(1)
+score = 2300 // cost
+print(f"Score: {score} / 100")
+if score >= 100:
+    print(f"You passed my exam! flag: {flag}")
+else:
+    print("Try harder!")
+```
+
+`a = b + c` または `a = b * c` という形式の式を入力して、変数を定義していくことができます。初期状態では `one = 1` だけが定義されており、最終的に `result` を512bitのランダムな整数 `target` と同じ値にする必要があります。
+`+` を使った回数に応じてスコアが計算され、スコアが 100 以上、つまり 23 回以下の加算で`target`を作ることができればフラグが得られます。乗算演算子 `*` は自由に使用できるので、できるだけ乗算を使って大きな数を作り、加算の回数を減らすことが求められます。
+
+# 解法
+方針として、最初に小さい素数を `+` で作り、それらの積で作れるsmoothな数の和で `target` を構成することを考えます。
+
+## 1. 小さい素数を用意する
+`variables` には `one = 1` が入っているので、一つ前までの素数で $p-1$ を作り、$1$を足すという方法によって一回の`+`で $p$ が構成できます。使う素数の数と同じだけ `+` を使う必要があります。
+
+$2,3,5,7,11,13,17,19,23,29$ の 10 個まで作ることにすると、素数生成に 10 回の `+` がかかり、残りの 13 回を「smoothな数の和」に使えます。つまりsmoothな数を最大 14 個まで足すことができます。
+
+## 2. `target` をsmoothな数の和に分解する
+「高々$n$個のsmoothな数の和で$T$を表す」という問題を考えます（最初は$T = \text{target}$）。できるだけ$T$に近いsmooth数$a$を選ぶと、「高々$n-1$個のsmoothな数の和で$T - a$を表す」という問題に帰着できます。
+$T$と上位bitを$512 / 14 \approx 37$bit程度一致させることを繰り返すことができれば、14個のsmoothな数の和で`target`を表すことができるはずです。
+
+smoothな数は $\prod_i p_i^{a_i}$ と書けるので、$\log$ を取れば $\sum_i a_i \log p_i$ と表せます。
+$T$と上位$m$bitを一致させることを目標とすると、$L=T - 2^{ \lfloor \log T \rfloor - m }$として、
+
+$$
+\log L \leq \sum_i a_i \log p_i \leq \log T \\
+0 \leq a_i (0 \leq i < 10)
+$$
+
+を満たすように$a_i$を選ぶ問題と言えます。
+
+これはLLLで解くことができる最近ベクトル問題に近い形をしています。実際、精度パラメータ$P$を用いて以下のように格子基底$B$と目的ベクトル$\mathbf{t}$を構成し、
+
+$$
+B = \begin{pmatrix}
+\lfloor \log_2 p_0 \cdot 2^P \rfloor & 1 & 0 & \cdots & 0 \\
+\lfloor \log_2 p_1 \cdot 2^P \rfloor & 0 & 1 & \cdots & 0 \\
+\vdots & \vdots & \vdots & \ddots & \vdots \\
+\lfloor \log_2 p_9 \cdot 2^P \rfloor & 0 & 0 & \cdots & 1
+\end{pmatrix}
+$$
+
+$$
+\mathbf{t} = \left(\frac{\lfloor \log_2 L \cdot 2^P \rfloor + \lfloor \log_2 T \cdot 2^P \rfloor}{2}, \frac{\lceil \log_2 T / \log_2 p_0 \rceil}{2},\ \ldots,\ \frac{\lceil \log_2 T / \log_2 p_9 \rceil}{2} \right)
+$$
+
+適切に重み付けした後にBabai's Nearest Plane Algorithmを適用すると、最適解に近い解が高速に得られます。
+
+なお、smooth数 $a$ を $T$ から引いた後の $T - a$ がsmoothな因子を持つ場合があります。この因子の部分を毎回除いておくことで、次のステップで処理すべき $T$ を更に小さくできます。
+
+ここまでを実装すると、16個の値の和で `target` を表すことができ、92点が得られるはずです。ここから更に改善が必要です。
+
+## 3. 更に改善する
+
+### ビームサーチ
+
+$a$の選び方によって次以降のステップで得られる $a$ の値が大きく変わるため、貪欲に$T$に近い値を$a$として選ぶのは最適とは限りません。
+そこで複数の $a$ を同時に保持し、各ステップで $(T - a) / s$ のbit数が小さい上位N個だけを残して探索を続けるビームサーチを適用します。
+
+### Babai's Nearest Plane Algorithmから複数の候補を得る
+
+通常のBabai's Nearest Plane Algorithmでは、各ステップで目標に最も近い整数を選ぶことで格子点の近似解を1点求めます。これを拡張して、各ステップで近い整数を複数候補として分岐させ、目標ベクトルへの距離スコアが小さい順に候補集合を管理します。これにより1回のCVP求解から複数のsmooth数候補が得られます。
+また、$m$などのパラメータを変えて複数回CVPを解くことでも候補を増やすことができます。
+
+### 終端処理
+
+$12$回の削減を行った後、最後の2項の決め方を工夫します。
+$2^{32}$ 未満の29-smoothな数をあらかじめ全列挙しておいたソート済みリストを用意し、左端と右端の2つのインデックスから順に和を計算しながら絞り込むことで、$T$ をちょうど2つのsmooth数の和に分解します。
+
+
+以上の工夫を組み合わせることで、安定して23回以下の加算で `target` を表せるようになります。
+
+ソルバは以下の通りです。
+
+<details>
+<summary>ソルバ（クリックで展開）</summary>
+```python showLineNumbers
+import heapq
+import math
+from pathlib import Path
+import string
+
+from pwn import process
+from sage.all import Matrix, Primes, RR, RealField, ZZ, ceil, floor, identity_matrix, vector
+
+
+NPR = 10
+TARGET_COST = 23
+MAX_TOTAL_TERMS = TARGET_COST - NPR + 1
+
+MULTI_BABAI_CHOICES = 2
+MULTI_BABAI_FRONTIER = 32
+
+BEAM_WIDTH = 10
+NEXT_STATES_WIDTH = BEAM_WIDTH * 3
+LOCAL_CHILDREN = 2
+MID_CHILDREN = 2
+LATE_CHILDREN = 3
+PER_M = 2
+
+LAST2_EXACT_BITS = 40
+LAST2_OLD_BITS = 54
+
+PRIMES = [int(Primes()[i]) for i in range(NPR)]
+CONSTRUCT_CACHE = {}
+
+
+def factor_exponents(value):
+    exponents = [0] * NPR
+    rem = value
+    for idx, prime in enumerate(PRIMES):
+        while rem % prime == 0:
+            exponents[idx] += 1
+            rem //= prime
+    assert rem == 1
+    return exponents
+
+
+def smallest_prime_factor(value):
+    for prime in PRIMES:
+        if value % prime == 0:
+            return prime
+    raise ValueError(value)
+
+
+def build_primitives(limit):
+    ops = []
+    for value in range(2, limit + 1):
+        prime = smallest_prime_factor(value)
+        if prime == value:
+            ops.append(("+", value - 1, 1))
+        else:
+            ops.append(("*", value // prime, prime))
+    return ops
+
+
+def construct_ops(terms):
+    ops = build_primitives(PRIMES[-1])
+    acc = 0
+    for term in terms:
+        cur = 1
+        for prime, exponent in zip(PRIMES, factor_exponents(term)):
+            for _ in range(exponent):
+                ops.append(("*", cur, prime))
+                cur *= prime
+        if acc:
+            ops.append(("+", acc, cur))
+        acc += cur
+    return ops
+
+
+def operate(ops):
+    values = {1}
+    cost = 0
+    for op, left, right in ops:
+        assert left in values and right in values
+        if op == "+":
+            values.add(left + right)
+            cost += 1
+        else:
+            values.add(left * right)
+    return cost, values
+
+
+def smooth_factor(value):
+    factor = 1
+    rem = value
+    for prime in PRIMES:
+        while rem % prime == 0:
+            rem //= prime
+            factor *= prime
+    return factor
+
+
+def is_smooth(value):
+    rem = value
+    for prime in PRIMES:
+        while rem % prime == 0:
+            rem //= prime
+    return rem == 1
+
+
+def map_varname(value):
+    if value == 1:
+        return "one"
+    out = ""
+    rem = value
+    while rem:
+        out += string.ascii_lowercase[rem % 26]
+        rem //= 26
+    return out
+
+
+def choose_prec(target, m_bits):
+    bits = max(2, target.bit_length())
+    exp_budget = sum(int(math.ceil(bits / math.log2(prime))) for prime in PRIMES)
+    slack = max(8, (exp_budget + 1).bit_length() + 6)
+    return max(48, m_bits + slack)
+
+
+def lower_bound_for_m(target, m_bits):
+    shift = target.bit_length() - m_bits
+    if shift > 0:
+        lower = target - (1 << shift)
+    else:
+        lower = 1
+    if lower <= 0:
+        lower = 1
+    return lower
+
+
+def construct_context(prec):
+    cached = CONSTRUCT_CACHE.get(prec)
+    if cached is not None:
+        return cached
+    field = RealField(prec)
+    prime_logs = [field(prime).log(2) for prime in PRIMES]
+    base_matrix = (
+        Matrix(ZZ, [ZZ(v * 2**prec) for v in prime_logs])
+        .stack(identity_matrix(NPR, NPR))
+        .transpose()
+    )
+    cached = (field, prime_logs, base_matrix)
+    CONSTRUCT_CACHE[prec] = cached
+    return cached
+
+
+def build_cvp_instance(target, m_bits):
+    if target <= 1:
+        return None
+    prec = choose_prec(target, m_bits)
+    lower = lower_bound_for_m(target, m_bits)
+    if lower >= target:
+        return None
+
+    field, prime_logs, base_matrix = construct_context(prec)
+    target_log = field(target).log(2)
+    lower_log = field(lower).log(2)
+    lbs = [floor(lower_log * 2**prec)] + [0] * NPR
+    ubs = [floor(target_log * 2**prec)] + [ceil(target_log / prime_logs[idx]) for idx in range(NPR)]
+
+    mat = Matrix(ZZ, base_matrix)
+    lb = list(lbs)
+    ub = list(ubs)
+    max_element = max(abs(mat[row, col]) for row in range(mat.nrows()) for col in range(mat.ncols()))
+    weight = mat.ncols() * max_element
+    max_diff = max(ub[idx] - lb[idx] for idx in range(mat.ncols()))
+    applied_weights = []
+    for col in range(mat.ncols()):
+        width = ub[col] - lb[col]
+        if width == 0:
+            col_weight = weight
+        else:
+            col_weight = max(1, max_diff // width)
+        applied_weights.append(int(col_weight))
+        for row in range(mat.nrows()):
+            mat[row, col] *= col_weight
+        lb[col] *= col_weight
+        ub[col] *= col_weight
+
+    target_vec = vector(ZZ, [(lb[idx] + ub[idx]) // 2 for idx in range(mat.ncols())])
+    return {
+        "matrix": mat,
+        "target": target_vec,
+        "weights": applied_weights,
+        "limit": int(target),
+    }
+
+
+def nearest_integers(value, count):
+    center = int(value.round())
+    out = []
+    seen = set()
+    radius = 0
+    while len(out) < count:
+        if radius == 0:
+            cands = [center]
+        else:
+            cands = [center - radius, center + radius]
+        cands.sort(key=lambda cand: (abs(value - cand), abs(cand - center), cand))
+        for cand in cands:
+            if cand in seen:
+                continue
+            seen.add(cand)
+            out.append(cand)
+            if len(out) >= count:
+                break
+        radius += 1
+    return out
+
+
+def babai_points(matrix, target_vec):
+    basis = Matrix(ZZ, matrix).LLL(algorithm="flatter")
+    gs = basis.gram_schmidt()[0]
+    zero = vector(ZZ, [0] * len(target_vec))
+    frontier = [(RR(0), target_vec, zero)]
+
+    for row_idx in reversed(range(basis.nrows())):
+        denom = gs[row_idx] * gs[row_idx]
+        next_frontier = []
+        for score, diff, point in frontier:
+            if denom == 0:
+                coeffs = [0]
+            else:
+                coord = (diff * gs[row_idx]) / denom
+                coeffs = nearest_integers(coord, MULTI_BABAI_CHOICES)
+            for coeff in coeffs:
+                row = basis[row_idx] * coeff
+                diff2 = diff - row
+                point2 = point + row
+                if denom == 0:
+                    extra = RR(0)
+                else:
+                    extra = (coord - coeff) ** 2 * denom
+                next_frontier.append((score + extra, diff2, point2))
+        next_frontier.sort(key=lambda item: item[0])
+        frontier = []
+        seen = set()
+        for item in next_frontier:
+            key = tuple(int(v) for v in item[2])
+            if key in seen:
+                continue
+            seen.add(key)
+            frontier.append(item)
+            if len(frontier) >= MULTI_BABAI_FRONTIER:
+                break
+    return [item[2] for item in frontier]
+
+
+def decode_point(point, instance):
+    exponents = []
+    for idx, weight in enumerate(instance["weights"][1:]):
+        coord = int(point[idx + 1])
+        if coord % weight != 0:
+            return None
+        exponent = coord // weight
+        if exponent < 0:
+            return None
+        exponents.append(exponent)
+
+    value = 1
+    for prime, exponent in zip(PRIMES, exponents):
+        value *= prime ** exponent
+    if value > instance["limit"]:
+        return None
+    return int(value)
+
+
+def construct_candidates(target, m_bits):
+    instance = build_cvp_instance(target, m_bits)
+    if instance is None:
+        return []
+    out = []
+    seen = set()
+    for point in babai_points(instance["matrix"], instance["target"]):
+        value = decode_point(point, instance)
+        if value is None or value in seen:
+            continue
+        seen.add(value)
+        out.append(value)
+        if len(out) >= PER_M:
+            break
+    return out
+
+
+def iter_construct_candidates(rem):
+    start_m = min(60, rem.bit_length() - 1)
+    for m_bits in range(start_m, 15, -1):
+        for value in construct_candidates(rem, m_bits):
+            yield m_bits, value
+
+
+def step_state(rem, common, terms, summand):
+    next_raw = rem - summand
+    factor = smooth_factor(next_raw)
+    return next_raw // factor, common * factor, terms + [summand * common]
+
+
+def order_states(states):
+    states.sort(key=lambda st: st[0])
+    out = []
+    seen = set()
+    for state in states:
+        key = (state[0], state[1])
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(state)
+    return out
+
+
+def choose_child_limits(rem_bits):
+    if rem_bits <= 80:
+        return LATE_CHILDREN, LATE_CHILDREN * 2
+    if rem_bits <= 120:
+        return MID_CHILDREN, MID_CHILDREN * 2
+    return LOCAL_CHILDREN, LOCAL_CHILDREN
+
+
+def collect_children(rem, common, terms, limit=None, raw_limit=None, m_band=None):
+    rem_bits = rem.bit_length()
+    if limit is None or raw_limit is None:
+        default_limit, default_raw = choose_child_limits(rem_bits)
+        if limit is None:
+            limit = default_limit
+        if raw_limit is None:
+            raw_limit = default_raw
+
+    children = []
+    seen_summands = set()
+
+    def add_child(m_bits, summand):
+        if summand >= rem or summand in seen_summands:
+            return
+        seen_summands.add(summand)
+        children.append((*step_state(rem, common, terms, summand), m_bits))
+
+    if m_band is None:
+        for m_bits, summand in iter_construct_candidates(rem):
+            add_child(m_bits, summand)
+            if len(children) >= raw_limit:
+                break
+    else:
+        start_m = min(60, rem_bits - 1)
+        stop_m = max(16, start_m - m_band + 1)
+        for m_bits in range(start_m, stop_m - 1, -1):
+            for summand in construct_candidates(rem, m_bits):
+                add_child(m_bits, summand)
+        if len(children) < raw_limit:
+            for m_bits in range(stop_m - 1, 15, -1):
+                for summand in construct_candidates(rem, m_bits):
+                    add_child(m_bits, summand)
+                    if len(children) >= raw_limit:
+                        break
+                if len(children) >= raw_limit:
+                    break
+
+    best = {}
+    for child in children:
+        key = child[0]
+        if key not in best:
+            best[key] = child
+    out = list(best.values())
+    out.sort(key=lambda st: st[0])
+    return out[:limit]
+
+
+values = []
+def rec(idx, cur):
+    if idx == len(PRIMES):
+        values.append(cur)
+        return
+    prime = PRIMES[idx]
+    value = cur
+    while value < 2**32:
+        rec(idx + 1, value)
+        value *= prime
+rec(0, 1)
+values.sort()
+
+def solve_last2(total):
+    left = 0
+    right = len(values) - 1
+    while left <= right:
+        pair_sum = values[left] + values[right]
+        if pair_sum == total:
+            return values[left], values[right]
+        if pair_sum < total:
+            left += 1
+        else:
+            right -= 1
+    return None
+
+def close_state(depth, rem, common, terms):
+    remaining_terms = MAX_TOTAL_TERMS - depth
+    if remaining_terms >= 1 and is_smooth(rem):
+        print(f"    [close last1] depth={depth} rem_bits={rem.bit_length()} total_terms={len(terms) + 1}")
+        return terms + [rem * common]
+    if remaining_terms >= 2 and rem < 2**32:
+        pair = solve_last2(rem)
+        if pair is not None:
+            print(f"    [close last2] depth={depth} rem_bits={rem.bit_length()} total_terms={len(terms) + 2}")
+            return terms + [pair[0] * common, pair[1] * common]
+    return None
+
+
+def find_terms_cost23(target):
+    common = smooth_factor(target)
+    rem = target // common
+    ans = close_state(0, rem, common, [])
+    if ans is not None:
+        return ans
+
+    beam = [(rem, common, [])]
+    print(f"[+] search n={NPR} beam={BEAM_WIDTH} target_cost<={TARGET_COST} max_terms={MAX_TOTAL_TERMS}")
+    for depth in range(1, MAX_TOTAL_TERMS):
+        child_buffers = []
+        child_heap = []
+        for parent_idx, (rem, common, terms) in enumerate(beam):
+            children = collect_children(rem, common, terms)
+            if not children:
+                continue
+            child_buffers.append(children)
+            rem2, _common2, _terms2, _m_bits = children[0]
+            heapq.heappush(child_heap, (rem2, len(child_buffers) - 1, 0))
+        if not child_heap:
+            break
+
+        next_states = []
+        while child_heap and len(next_states) < NEXT_STATES_WIDTH:
+            _key, buf_idx, child_idx = heapq.heappop(child_heap)
+            rem2, common2, terms2, _m_bits = child_buffers[buf_idx][child_idx]
+            ans = close_state(depth, rem2, common2, terms2)
+            if ans is not None:
+                return ans
+            next_states.append((rem2, common2, terms2))
+            next_idx = child_idx + 1
+            if next_idx < len(child_buffers[buf_idx]):
+                rem3, _common3, _terms3, _m_bits = child_buffers[buf_idx][next_idx]
+                heapq.heappush(child_heap, (rem3, buf_idx, next_idx))
+
+        if not next_states:
+            break
+
+        ordered = order_states(next_states)
+        beam = ordered[:BEAM_WIDTH]
+        print(f"  [depth {depth}] pool={len(ordered)} kept={len(beam)} best_bits={[state[0].bit_length() for state in beam]}")
+    raise RuntimeError(f"search failed within target_cost={TARGET_COST}")
+
+
+def send_solution(conn, target, terms):
+    ops = construct_ops(terms)
+    cost, values = operate(ops)
+    assert target in values
+    assert cost <= TARGET_COST, cost
+
+    declared = set()
+    for op, left, right in ops:
+        out = left + right if op == "+" else left * right
+        if out in declared:
+            continue
+        conn.sendline(f"{map_varname(out)}={map_varname(left)}{op}{map_varname(right)}".encode())
+        declared.add(out)
+    conn.sendline(f"result=one*{map_varname(target)}".encode())
+
+
+def main():
+    conn = remote("localhost", 1337)
+    conn.recvuntil(b"target = ")
+    target = int(conn.recvline())
+    print(f"[+] target bits={target.bit_length()}")
+    terms = find_terms_cost23(target)
+    cost = NPR + len(terms) - 1
+    print(f"[+] found candidate terms={len(terms)} cost={cost}")
+    send_solution(conn, target, terms)
+    print(conn.recvall(timeout=3).decode(errors="replace"), end="")
+
+
+if __name__ == "__main__":
+    main()
+```
+</details>
+
+作問時点では思いついていませんでしたが、使用する素数を$2,3,5,7,11,13$ の 6 個に絞ると$T$以下の最大のsmoothな数を厳密に求めることが高速にできます。
+使用する素数が6個の場合18個のsmoothな数の和で `target` を表すことができればよく、10個の場合と比べて4個余裕ができますが、その分smoothな数の自由度が小さく、密度が下がるため、一度に一致させることのできるbit数が減るというトレードオフが発生します。
+追加で実験したところ、使用する素数を6個に絞った場合でもコスト24までは達成できましたが、コスト23はおそらく難しい、またはかなり確率が低いと思われます。
+
+この見た目でLLLを要求するというのが面白ポイントだったんですが、競プロ的なアルゴリズムで24コストまでは達成できてしまうことがrabbit holeになってしまったようで反省です。

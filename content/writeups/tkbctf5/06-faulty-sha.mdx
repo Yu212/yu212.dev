@@ -1,0 +1,618 @@
+---
+title: "Faulty SHA"
+categories: ["crypto"]
+solves: 1
+---
+# 問題
+
+次のようなサーバが与えられます。
+
+```python showLineNumbers
+from random import Random
+import inspect
+import os
+# https://github.com/keanemind/python-sha-256/blob/master/sha256.py
+import sha256
+
+flag = os.environ.get("FLAG", "tkbctf{dummy}")
+key = Random(sha256.generate_hash(flag)).randbytes(55)
+
+pos = int(input("pos: "))
+source = bytearray(inspect.getsource(sha256), "utf-8")
+source[pos // 8] ^= 1 << (pos % 8)
+exec(bytes(source), sha256.__dict__)
+
+print("hash:", sha256.generate_hash(key).hex())
+if bytes.fromhex(input("key: ")) == key:
+    print(flag)
+else:
+    print("wrong")
+```
+
+`sha256.py` は GitHub で公開されている SHA-256 実装（`keanemind/python-sha-256`）です。`pos` で指定したビットだけ反転したソースで `sha256` モジュールが上書きされ、`key` のハッシュが返されます。`key = Random(SHA256(flag)).randbytes(55)` は接続のたびに同じ値なので、複数回接続してそれぞれ別のビットを壊すことで、異なる視点から `key` の情報を集められます。
+
+# 解法
+
+解法は次の 3 ステップに分かれます。
+
+1. 入力の最初の 24 バイトを求める
+2. `message_schedule[16:24]` を求める
+3. `message_schedule[9:14]` を求める
+4. `message_schedule[6:9]` を求める
+
+## 1. 入力の最初の 24 バイトの特定
+
+SHA-256 のメッセージスケジュール計算は次のようになっています。
+
+```python showLineNumbers
+for t in range(0, 64):
+    if t <= 15:
+        message_schedule.append(bytes(message_block[t*4:(t*4)+4]))
+    else:
+        ...（展開式）
+```
+
+55 バイトの `key` をパディングすると 64 バイト（= 1 ブロック）になり、`message_schedule`(以降`w`とします) の最初の 16 要素がメッセージの 16 ワードに対応します。このうち `w[14] = 0x00000000`、`w[15] = 0x000001B8`（$= 55 \times 8 = 440$）はパディングで固定です。
+
+以下の 7 種類の反転を順に使います。それぞれ反転によって入力の一部の値しか使わずに出力を計算するようになっており、各ステップで新たに増える未知の値は 4 バイト以下であることから、前のステップまでで特定した既知の値を固定した上で $2^{32}$ 以内の全探索で特定できます。
+ハッシュ出力が依存する値を列挙しており、**太字**が直前のステップまでで未知だった値です。
+
+|pos|行|変更|依存|
+|-|-|-|-|
+|19362|61|`[t*4:(t*4)+4]`<br/>→`[t*4:(t*0)+4]`|**key[0]**, **key[1]**, **key[2]**, **key[3]**|
+|19321|61|`[t*4:(t*4)+4]`<br/>→`[t*6:(t*4)+4]`|key[0:4], **key[6]**, **key[7]**|
+|19320|61|`[t*4:(t*4)+4]`<br/>→`[t*5:(t*4)+4]`|key[0:4], **key[5]**, key[6:8], **key[10]**, **key[11]**, **key[15]**|
+|19352|61|`[t*4:(t*4)+4]`<br/>→`[t*4:(t+4)+4]`|key[0:4], **key[4]**, key[5:8], **key[8]**, **key[9]**|
+|26438|87|`message_schedule[t]`<br/>→`message_schedule[4]`|**key[16]**, **key[17]**, **key[18]**, **key[19]**|
+|19326|61|`[t*4:(t*4)+4]`<br/>→`[t*t:(t*4)+4]`|key[0:12], **key[12]**, **key[13]**, **key[14]**, key[15:20]|
+|14634|40|`blocks.append(message[i:i+64])`<br/>→`blocks.append(message[i:i+24])`|key[0:20], **key[20]**, **key[21]**, **key[22]**, **key[23]**|
+
+以上で `key[0:24]`（スケジュールの最初の 6 ワード `w[0:6]`）が得られます。
+
+この7種類の反転は、人力でパズルすることでも見つけられますが、
+すべてのビット位置（約 32000 通り）を試し、エラーなく実行でき、かつ定数部分（`K` 配列や初期ハッシュ値）以外を壊しているものに絞る（約 500 通り）と、
+各位置について入力を 1 バイトずつ変えて出力の依存バイトを調べることができ、有用な位置を網羅的に発見できます。
+
+## 2. `message_schedule[16:24]` を求める
+
+sha256の圧縮関数は次のようになっています。
+```python showLineNumbers
+# Iterate for t=0 to 63
+for t in range(64):
+    t1 = ((h + _capsigma1(e) + _ch(e, f, g) + K[t] +
+            int.from_bytes(message_schedule[t], 'big')) % 2**32)
+
+    t2 = (_capsigma0(a) + _maj(a, b, c)) % 2**32
+
+    h = g
+    g = f
+    f = e
+    e = (d + t1) % 2**32
+    d = c
+    c = b
+    b = a
+    a = (t1 + t2) % 2**32
+```
+
+ラウンド $t$ 終了後の変数の組 $[a,b,c,d,e,f,g,h]$ を $S_t$ と書きます。
+
+重要な点として、`w[t]`が既知であれば、ラウンド関数は以下のようにして逆方向に計算することができます。
+
+```python
+def inv_round(s, t, w):
+    a_new, a, b, c, e_new, e, f, g = s
+    t2 = (capsigma0(a) + maj(a, b, c)) % MOD
+    t1 = (a_new - t2) % MOD
+    d = (e_new - t1) % MOD
+    h = (t1 - capsigma1(e) - ch(e, f, g) - K[t] - w) % MOD
+    return [a, b, c, d, e, f, g, h]
+```
+
+`w[16:24]`を求めるため、以下の2種類の反転の結果を用います。
+
+- pos=17675（57行目、`if t <= 15:` → `if t <= 95:`） \
+スケジュール計算ループ内の $t$ は最大 63 なので `t <= 95` は常に真になります。$t \geq 16$ では `message_block[t*4:(t*4)+4]` が空スライスになるため、$w[16]$ 以降はすべて 0 になります。
+
+- pos=25498（85行目、`for t in range(64):` → `for t in range(24):`） \
+スケジュール準備ループは変更されないため $w[0:64]$ は正常に計算されますが、ハッシュ計算ループが 24 ラウンドで終了します。
+
+
+1つ目の出力から`init_state`を引いた後に`inv_round(s, t, 0)` を $t=63$ から $t=16$ まで 48 回逆向きに適用すれば $S_{15}$ が得られます。
+
+2つ目の出力から`init_state`を引くと$S_{23}$が得られます。
+
+**$w[16:24]$ の抽出**
+
+$S_{23}$ に対し `inv_round(s, t, 0)` を $t=23$ から $t=16$ まで 8 回適用します。
+
+`inv_round` の出力は `[a, b, c, d, e, f, g, h]` ですが、各成分がどこから来るか見ると、
+
+- `a, b, c`： 入力の `s[1], s[2], s[3]`
+- `e, f, g`： 入力の `s[5], s[6], s[7]`
+- `d`： `s[4] - t1`（`s[0], s[1], s[2], s[3], s[5]` に依存）
+- `h`： `t1 - capsigma1(e) - ch(e, f, g) - K[t] - w`（`s[0:4], s[5:8]`と`w`に依存）
+
+となっており、正しくない値 `w=0` で $S_{22}$ を計算すると、出力の先頭7成分は正しく、`h` のみが誤ります。
+次の$S_{21}$の計算ではその誤った `h` が使われることにより、誤りは`g`へ伝播します。これが繰り返され、以下の`o`の部分のみ正しい値が得られます。
+
+```
+     a b c d e f g h
+15 | o o o o o o o o <- S_15
+16 | o
+17 | o o
+18 | o o o
+19 | o o o o
+20 | o o o o o        ^
+21 | o o o o o o      |
+22 | o o o o o o o    |
+23 | o o o o o o o o <- S_23
+```
+
+`a`はすべてのラウンドで正しい値が得られています。
+
+$a_{t+1}$ と $S_t$ が分かると $t1_t, t2_t$が求まり、更に $S_{t+1}$ と $w[t+1]$ が以下のようにして求まります。
+
+```python
+def advance(S, a_next, t):
+    a, b, c, d, e, f, g, h = S
+    t2 = (capsigma0(a) + maj(a, b, c)) % MOD
+    t1 = (a_next - t2) % MOD
+    e_next = (d + t1) % MOD
+    S_next = [a_next, a, b, c, e_next, e, f, g]
+    w = (t1 - h - capsigma1(e) - ch(e, f, g) - K[t+1]) % MOD
+    return S_next, w
+```
+
+まとめると、$a_t$（$t = 16, \ldots, 23$）と $S_{15}$ を出発点として、$t = 15, 16, \ldots, 22$ の順に `advance` を呼ぶことで $w[16:24]$ が得られます。
+
+## 3. $w[9:14]$ を求める
+
+ここまでで得られた情報をまとめます。
+
+- `w[0:6]`：ステップ 1で得た`key[0:24]`
+- `w[14] = 0`、`w[15] = 440`：パディング固定値
+- `w[16:24]`：ステップ 2 で復元した
+
+SHA-256 のスケジュール展開式 $w[t] = \sigma_1(w[t-2]) + w[t-7] + \sigma_0(w[t-15]) + w[t-16]$ を各未知数について解きます。
+
+
+$w[t-7]$ について解くと、
+
+$$w[t-7] = w[t] - \sigma_1(w[t-2]) - \sigma_0(w[t-15]) - w[t-16]$$
+
+となり、$t = 16, 17, 18, 19, 20$ と代入すると、それぞれ $w[9], w[10], w[11], w[12], w[13]$ が既知の値のみから順に求まります。
+
+
+## 4. $w[6:9]$ を求める
+$w[t-16]$ について解くと、
+
+$$w[t-16] = w[t] - \sigma_1(w[t-2]) - w[t-7] - \sigma_0(w[t-15])$$
+
+となります。$w[8]$ を $2^{32}$ 通り全探索し、各候補に対して
+
+- $t = 23$：$w[7] = w[23] - \sigma_1(w[21]) - w[16] - \sigma_0(w[8])$
+- $t = 22$：$w[6] = w[22] - \sigma_1(w[20]) - w[15] - \sigma_0(w[7])$
+- $t = 21$ で検証：$w[5] \stackrel{?}{=} w[21] - \sigma_1(w[19]) - w[14] - \sigma_0(w[6])$
+
+のように計算します。検証をパスした候補が正しい $w[8]$ であり、$w[6], w[7]$ も同時に得られます。
+
+
+これで `w[0:14]` が揃い、`key = w[0]` から `w[13]` の先頭 3 バイトまでを連結した 55 バイトの鍵が復元でき、フラグが得られます。
+
+複数回$2^{32}$の全探索が必要なため、実装はPythonではなくC++などの高速な言語で行うと良いでしょう。これくらいはAIに任せると良いと思います。
+ソルバは以下の通りです。
+
+<details>
+<summary>ソルバのPython部分（クリックで展開）</summary>
+```python showLineNumbers
+import sys
+from pwn import *
+import ast
+from Crypto.Util.number import long_to_bytes
+
+def state2bytes(state):
+    return b"".join([v.to_bytes(4, "big") for v in state])
+
+def bytes2state(b):
+    return [int.from_bytes(b[i*4:i*4+4], "big") for i in range(8)]
+
+def oracle(idx):
+    with remote("localhost", 1337) as sc:
+        sc.sendlineafter(b"pos: ", str(idx).encode())
+        sc.recvuntil(b"hash: ")
+        hash = bytes2state(bytes.fromhex(sc.recvline().decode()))
+        return hash
+
+import sha256
+import inspect
+
+source = bytearray(inspect.getsource(sha256), "utf-8")
+
+hash1 = oracle(source.index(b"if t <= 15") * 8 + 67)  # if t <= 95:
+hash2 = oracle(source.index(b"range(64)") * 8 + 50)   # range(24)
+hash3 = oracle(source.index(b"[t*4:(t*4)+4]") * 8 + 66)  # [t*4:(t*0)+4]
+hash4 = oracle(source.index(b"[t*4:(t*4)+4]") * 8 + 25)  # [t*6:(t*4)+4]
+hash5 = oracle(source.index(b"[t*4:(t*4)+4]") * 8 + 24)  # [t*5:(t*4)+4]
+hash6 = oracle(source.index(b"[t*4:(t*4)+4]") * 8 + 56)  # [t*4:(t+4)+4]
+hash7 = oracle(source.index(b"message_schedule[t]") * 8 + 142)  # message_schedule[4]
+hash8 = oracle(source.index(b"[t*4:(t*4)+4]") * 8 + 30)  # [t*t:(t*4)+4]
+hash9 = oracle(source.index(b"message[i:i+64]") * 8 + 98)  # message[i:i+24]
+
+sol = process(["./solver2"], env={"OMP_CANCELLATION": "TRUE"})
+sol.sendline(" ".join(map(str, hash1)).encode())
+sol.sendline(" ".join(map(str, hash2)).encode())
+sol.sendline(" ".join(map(str, hash3)).encode())
+sol.sendline(" ".join(map(str, hash4)).encode())
+sol.sendline(" ".join(map(str, hash5)).encode())
+sol.sendline(" ".join(map(str, hash6)).encode())
+sol.sendline(" ".join(map(str, hash7)).encode())
+sol.sendline(" ".join(map(str, hash8)).encode())
+sol.sendline(" ".join(map(str, hash9)).encode())
+
+for _ in range(8):
+    print(sol.recvline())
+
+key = ast.literal_eval(sol.recvline().decode())
+key = b"".join([long_to_bytes(v, 4) for v in key])[:-1][:55]
+
+print(key.hex())
+
+with remote("localhost", 1337) as sc:
+    sc.sendlineafter(b"pos: ", str(source.index(b"#") * 8 + 8).encode())
+    sc.recvuntil(b"hash: ")
+    hash = bytes2state(bytes.fromhex(sc.recvline().decode()))
+    sc.recvuntil(b"key: ")
+    sc.sendline(key.hex())
+    print(sc.recvline())
+```
+</details>
+
+<details>
+<summary>ソルバのC++部分（クリックで展開）</summary>
+```c++ showLineNumbers
+#include <iostream>
+#include <vector>
+#include <array>
+#include <cstdint>
+#include <string>
+#include <algorithm>
+#include <omp.h>
+
+#define forb(k) for (uint64_t k = 0; k < 256; k++)
+
+const std::array<uint64_t, 64> K = {
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+};
+
+const std::array<uint64_t, 8> init_state = { 0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19 };
+
+std::array<uint64_t, 8> hash1{};
+std::array<uint64_t, 8> hash2{};
+std::array<uint64_t, 8> hash3{};
+std::array<uint64_t, 8> hash4{};
+std::array<uint64_t, 8> hash5{};
+std::array<uint64_t, 8> hash6{};
+std::array<uint64_t, 8> hash7{};
+std::array<uint64_t, 8> hash8{};
+std::array<uint64_t, 8> hash9{};
+
+void read_hash(std::array<uint64_t, 8> &hash) {
+    for (auto &value : hash) {
+        std::cin >> value;
+    }
+}
+
+inline uint64_t rotate_right(uint64_t value, uint64_t shift) {
+    return (value >> shift) | (value << (32 - shift));
+}
+inline uint64_t sigma0(uint64_t x) {
+    return rotate_right(x, 7) ^ rotate_right(x, 18) ^ (x >> 3);
+}
+inline uint64_t sigma1(uint64_t x) {
+    return rotate_right(x, 17) ^ rotate_right(x, 19) ^ (x >> 10);
+}
+inline uint64_t capsigma0(uint64_t x) {
+    return rotate_right(x, 2) ^ rotate_right(x, 13) ^ rotate_right(x, 22);
+}
+inline uint64_t capsigma1(uint64_t x) {
+    return rotate_right(x, 6) ^ rotate_right(x, 11) ^ rotate_right(x, 25);
+}
+inline uint64_t ch(uint64_t x, uint64_t y, uint64_t z) {
+    return (x & y) ^ (~x & z);
+}
+inline uint64_t maj(uint64_t x, uint64_t y, uint64_t z) {
+    return (x & y) ^ (x & z) ^ (y & z);
+}
+
+inline std::array<uint64_t, 8> round(const std::array<uint64_t, 8> &state, size_t t, uint64_t msg) {
+    uint64_t a = state[0], b = state[1], c = state[2], d = state[3];
+    uint64_t e = state[4], f = state[5], g = state[6], h = state[7];
+    uint64_t t1 = h + capsigma1(e) + ch(e, f, g) + K[t] + msg;
+    uint64_t t2 = capsigma0(a) + maj(a, b, c);
+    return { (t1 + t2) & 0xffffffff, a, b, c, (d + t1) & 0xffffffff, e, f, g };
+}
+
+inline std::array<uint64_t, 8> inv_round(const std::array<uint64_t, 8> &state, size_t t, uint64_t msg) {
+    uint64_t a = state[0], b = state[1], c = state[2], d = state[3];
+    uint64_t e = state[4], f = state[5], g = state[6], h = state[7];
+    uint64_t t2 = capsigma0(b) + maj(b, c, d);
+    uint64_t t1 = a - t2;
+    return { b, c, d, (e - t1) & 0xffffffff, f, g, h, (t1 - capsigma1(f) - ch(f, g, h) - K[t] - msg) & 0xffffffff };
+}
+
+template <size_t N>
+inline void extend_schedule(const std::array<uint64_t, N> &initial, std::array<uint64_t, 64> &schedule) {
+    static_assert(N <= 64);
+    for (size_t i = 0; i < N; i++) {
+        schedule[i] = initial[i];
+    }
+    for (size_t t = N; t < 64; t++) {
+        uint64_t value = sigma1(schedule[t-2]) + schedule[t-7] + sigma0(schedule[t-15]) + schedule[t-16];
+        schedule[t] = value & 0xffffffff;
+    }
+}
+
+template <size_t N>
+std::array<uint64_t, 8> calc_sha256(const std::array<uint64_t, N> &key) {
+    std::array<uint64_t, 64> schedule {};
+    extend_schedule(key, schedule);
+    std::array<uint64_t, 8> state = init_state;
+    for (size_t t = 0; t < 64; t++) {
+        state = round(state, t, schedule[t]);
+    }
+    for (size_t i = 0; i < 8; i++) {
+        state[i] = (state[i] + init_state[i]) & 0xffffffff;
+    }
+    return state;
+}
+
+void search_key_1(std::vector<uint64_t> &kb) {
+    bool found = false;
+    #pragma omp parallel
+    #pragma omp for collapse(4)
+    forb (k0) forb (k1) forb (k2) forb (k3) {
+        if (found) {
+            #pragma omp cancel for
+        }
+        std::array<uint64_t, 16> key = {};
+        key[0] = k0<<24 | k1<<16 | k2<<8 | k3;
+        if (calc_sha256(key) == hash3) {
+            found = true;
+            std::cout << "#1 found" << std::endl;
+            kb[0] = k0; kb[1] = k1; kb[2] = k2; kb[3] = k3;
+            #pragma omp cancel for
+        }
+        #pragma omp cancellation point for
+    }
+}
+
+void search_key_2(std::vector<uint64_t> &kb) {
+    bool found = false;
+    #pragma omp parallel
+    #pragma omp for collapse(2)
+    forb (k0) forb (k1) {
+        if (found) {
+            #pragma omp cancel for
+        }
+        std::array<uint64_t, 16> key = {};
+        key[0] = kb[0]<<24 | kb[1]<<16 | kb[2]<<8 | kb[3];
+        key[1] = k0<<8 | k1;
+        if (calc_sha256(key) == hash4) {
+            found = true;
+            std::cout << "#2 found" << std::endl;
+            kb[6] = k0; kb[7] = k1;
+            #pragma omp cancel for
+        }
+        #pragma omp cancellation point for
+    }
+}
+
+void search_key_3(std::vector<uint64_t> &kb) {
+    bool found = false;
+    #pragma omp parallel
+    #pragma omp for collapse(4)
+    forb (k0) forb (k1) forb (k2) forb (k3) {
+        if (found) {
+            #pragma omp cancel for
+        }
+        std::array<uint64_t, 16> key = {};
+        key[0] = kb[0]<<24 | kb[1]<<16 | kb[2]<<8 | kb[3];
+        key[1] = k0<<16 | kb[6]<<8 | kb[7];
+        key[2] = k1<<8 | k2;
+        key[3] = k3;
+        if (calc_sha256(key) == hash5) {
+            found = true;
+            std::cout << "#3 found" << std::endl;
+            kb[5] = k0; kb[10] = k1; kb[11] = k2; kb[15] = k3;
+            #pragma omp cancel for
+        }
+        #pragma omp cancellation point for
+    }
+}
+
+void search_key_4(std::vector<uint64_t> &kb) {
+    bool found = false;
+    #pragma omp parallel
+    #pragma omp for collapse(3)
+    forb (k0) forb (k1) forb (k2) {
+        if (found) {
+            #pragma omp cancel for
+        }
+        std::array<uint64_t, 16> key = {};
+        key[0] = kb[0]<<56 | kb[1]<<48 | kb[2]<<40 | kb[3]<<32 | k0<<24 | kb[5]<<16 | kb[6]<<8 | kb[7];
+        key[1] = k0<<32 | kb[5]<<24 | kb[6]<<16 | kb[7]<<8 | k1;
+        key[2] = k1<<8 | k2;
+        if (calc_sha256(key) == hash6) {
+            found = true;
+            std::cout << "#4 found" << std::endl;
+            kb[4] = k0; kb[8] = k1; kb[9] = k2;
+            #pragma omp cancel for
+        }
+        #pragma omp cancellation point for
+    }
+}
+
+void search_key_5(std::vector<uint64_t> &kb) {
+    bool found = false;
+    #pragma omp parallel
+    #pragma omp for collapse(4)
+    forb (k0) forb (k1) forb (k2) forb (k3) {
+        if (found) {
+            #pragma omp cancel for
+        }
+        std::array<uint64_t, 64> key;
+        key.fill(k0<<24 | k1<<16 | k2<<8 | k3);
+        if (calc_sha256(key) == hash7) {
+            found = true;
+            std::cout << "#5 found" << std::endl;
+            kb[16] = k0; kb[17] = k1; kb[18] = k2; kb[19] = k3;
+            #pragma omp cancel for
+        }
+        #pragma omp cancellation point for
+    }
+}
+
+void search_key_6(std::vector<uint64_t> &kb) {
+    bool found = false;
+    #pragma omp parallel
+    #pragma omp for collapse(3)
+    forb (k0) forb (k1) forb (k2) {
+        if (found) {
+            #pragma omp cancel for
+        }
+        std::array<uint64_t, 16> key = {};
+        key[0] = kb[0]<<24 | kb[1]<<16 | kb[2]<<8 | kb[3];
+        key[1] = kb[1]<<48 | kb[2]<<40 | kb[3]<<32 | kb[4]<<24 | kb[5]<<16 | kb[6]<<8 | kb[7];
+        key[2] = kb[5]<<48 | kb[6]<<40 | kb[7]<<32 | kb[8]<<24 | kb[9]<<16 | kb[10]<<8 | kb[11];
+        key[3] = kb[9]<<48 | kb[10]<<40 | kb[11]<<32 | k0<<24 | k1<<16 | k2<<8 | kb[15];
+        key[4] = kb[16]<<24 | kb[17]<<16 | kb[18]<<8 | kb[19];
+        if (calc_sha256(key) == hash8) {
+            found = true;
+            std::cout << "#6 found" << std::endl;
+            kb[12] = k0; kb[13] = k1; kb[14] = k2;
+            #pragma omp cancel for
+        }
+        #pragma omp cancellation point for
+    }
+}
+
+void search_key_7(std::vector<uint64_t> &kb) {
+    bool found = false;
+    #pragma omp parallel
+    #pragma omp for collapse(4)
+    forb (k0) forb (k1) forb (k2) forb (k3) {
+        if (found) {
+            #pragma omp cancel for
+        }
+        std::array<uint64_t, 16> key = {};
+        key[0] = kb[0]<<24 | kb[1]<<16 | kb[2]<<8 | kb[3];
+        key[1] = kb[4]<<24 | kb[5]<<16 | kb[6]<<8 | kb[7];
+        key[2] = kb[8]<<24 | kb[9]<<16 | kb[10]<<8 | kb[11];
+        key[3] = kb[12]<<24 | kb[13]<<16 | kb[14]<<8 | kb[15];
+        key[4] = kb[16]<<24 | kb[17]<<16 | kb[18]<<8 | kb[19];
+        key[5] = k0<<24 | k1<<16 | k2<<8 | k3;
+        if (calc_sha256(key) == hash9) {
+            found = true;
+            std::cout << "#7 found" << std::endl;
+            kb[20] = k0; kb[21] = k1; kb[22] = k2; kb[23] = k3;
+            #pragma omp cancel for
+        }
+        #pragma omp cancellation point for
+    }
+}
+
+void search_w8(std::array<uint64_t, 24> &known_keys) {
+    bool found = false;
+    #pragma omp parallel
+    #pragma omp for collapse(4)
+    forb (k0) forb (k1) forb (k2) forb (k3) {
+        if (found) {
+            #pragma omp cancel for
+        }
+        uint64_t w8 = k0<<24 | k1<<16 | k2<<8 | k3;
+        uint64_t w7 = (known_keys[23] - sigma1(known_keys[21]) - known_keys[16] - sigma0(w8)) & 0xffffffff;
+        uint64_t w6 = (known_keys[22] - sigma1(known_keys[20]) - known_keys[15] - sigma0(w7)) & 0xffffffff;
+        uint64_t w5_check = (known_keys[21] - sigma1(known_keys[19]) - known_keys[14] - sigma0(w6)) & 0xffffffff;
+        if (w5_check == known_keys[5]) {
+            found = true;
+            std::cout << "#8 found" << std::endl;
+            known_keys[8] = w8;
+            known_keys[7] = w7;
+            known_keys[6] = w6;
+            #pragma omp cancel for
+        }
+        #pragma omp cancellation point for
+    }
+}
+
+int main() {
+    read_hash(hash1);
+    read_hash(hash2);
+    read_hash(hash3);
+    read_hash(hash4);
+    read_hash(hash5);
+    read_hash(hash6);
+    read_hash(hash7);
+    read_hash(hash8);
+    read_hash(hash9);
+
+    std::array<uint64_t, 24> known_keys = {};
+    known_keys[14] = 0;
+    known_keys[15] = 55 * 8;
+
+    std::array<uint64_t, 8> h1 = hash1;
+    std::array<uint64_t, 8> h2 = hash2;
+    for (size_t i = 0; i < 8; i++) {
+        h1[i] = (h1[i] - init_state[i]) & 0xffffffff;
+        h2[i] = (h2[i] - init_state[i]) & 0xffffffff;
+    }
+    for (size_t t = 63; t >= 16; t--) {
+        h1 = inv_round(h1, t, 0);
+    }
+    for (size_t t = 23; t >= 16; t--) {
+        h2 = inv_round(h2, t, 0);
+    }
+    for (size_t t = 16; t < 24; t++) {
+        h2 = round(h2, t, 0);
+        uint64_t t2 = capsigma0(h1[0]) + maj(h1[0], h1[1], h1[2]);
+        uint64_t t1 = h2[0] - t2;
+        known_keys[t] = (t1 - (h1[7] + capsigma1(h1[4]) + ch(h1[4], h1[5], h1[6]) + K[t])) & 0xffffffff;
+        h1 = round(h1, t, known_keys[t]);
+    }
+
+    std::vector<uint64_t> kb(24, 0);
+    search_key_1(kb);
+    search_key_2(kb);
+    search_key_3(kb);
+    search_key_4(kb);
+    search_key_5(kb);
+    search_key_6(kb);
+    search_key_7(kb);
+
+    known_keys[0] = kb[0]<<24 | kb[1]<<16 | kb[2]<<8 | kb[3];
+    known_keys[1] = kb[4]<<24 | kb[5]<<16 | kb[6]<<8 | kb[7];
+    known_keys[2] = kb[8]<<24 | kb[9]<<16 | kb[10]<<8 | kb[11];
+    known_keys[3] = kb[12]<<24 | kb[13]<<16 | kb[14]<<8 | kb[15];
+    known_keys[4] = kb[16]<<24 | kb[17]<<16 | kb[18]<<8 | kb[19];
+    known_keys[5] = kb[20]<<24 | kb[21]<<16 | kb[22]<<8 | kb[23];
+
+    for (size_t t = 9; t <= 13; t++) {
+        known_keys[t] = (known_keys[t+7] - sigma1(known_keys[t+5]) - sigma0(known_keys[t-8]) - known_keys[t-9]) & 0xffffffff;
+    }
+
+    search_w8(known_keys);
+
+    for (size_t t = 0; t < 24; t++) {
+        std::cout << known_keys[t] << ",\n"[t==23];
+    }
+    return 0;
+}
+```
+</details>

@@ -1,0 +1,121 @@
+---
+title: "Faulty AES"
+categories: ["crypto"]
+solves: 61
+---
+# 問題
+次のようなサーバが与えられます。
+```python showLineNumbers
+import inspect
+import os
+import hashlib
+# https://github.com/boppreh/aes/blob/master/aes.py
+import aes
+
+flag = os.environ.get("FLAG", "tkbctf{dummy}")
+hash_val = hashlib.sha256(flag.encode()).digest()
+key, msg = hash_val[:16], hash_val[16:]
+
+pos = int(input("pos: "))
+source = bytearray(inspect.getsource(aes), "utf-8")
+source[pos // 8] ^= 1 << (pos % 8)
+exec(bytes(source), aes.__dict__)
+
+print("ct:", aes.AES(key).encrypt_block(msg).hex())
+if bytes.fromhex(input("hash: ")) == hash_val:
+    print(flag)
+else:
+    print("wrong")
+```
+`pos` で指定したビットだけ反転したソースコードで `aes` モジュールが上書きされ、その実装で`encrypt_block`が実行されています。`hash_val = sha256(flag)` がそのまま `key || msg` になっているので、`key` と `msg` が分かればフラグが得られます。
+
+`aes.py` は GitHub 上に公開されている AES 実装（`boppreh/aes`）で、実装にバグは無さそうです。
+
+# 解法
+1 回の接続につき 1 ビットだけ AES 実装を壊すことができますが、計算したい `key` と `msg` は何度接続しても同じ値であることから、複数回接続し、それぞれ別の箇所を壊すことによって多くの情報を得ることができます。
+
+## 1. `add_round_key` を無効化して `msg` を復元する
+64行目の`add_round_key`関数内の `for i in range(4):` を書き換えます。
+`'4' = 0x34` と `'0' = 0x30` の差は 1 bit なので、対応する bit を反転すれば `range(4)` を `range(0)` にすることができます。`add_round_key` は 4x4 の全バイトに XOR をかける処理なので、このループが 0 回になると「鍵加算を何もしない関数」になり、暗号文は鍵に依存しない固定変換になります。よって、得られた暗号文に対して AES の逆変換を適用すると `msg` を復元できます。
+
+## 2. ラウンド数を 0 にして `key` を復元する
+`rounds_by_key_size` の `16: 10` の `1` を 0 に変えて `16: 00` にすると、ラウンド数が 0 になります（`'1' = 0x31` と `'0' = 0x30` も 1 bit だけ違います）。このとき暗号化は
+`ct = ShiftRows(SubBytes(msg ^ key)) ^ key` という形になり、`ct` と `msg` が既知なので `key` に関する式が得られます。
+
+この方程式の解き方は 2 通りあります。
+
+### z3 を使う方法
+16 バイトの `key` をそのまま z3 の BitVec に置き、上の式をそのまま制約として解けば復元できます。
+
+### z3 を使わない方法
+MixColumns が無いので、ShiftRows によって列ごとに 4 バイトが巡回するだけになり、各列は独立に解けます。列 `j` について 4 本の式が得られ、`j=0` は各バイト独立、`j=1,3` は 4 バイトのサイクル、`j=2` は 2 バイトずつの入れ替わりになります。1 バイトを仮定して他を順に決めることで各列の候補が列挙でき、4 列の組み合わせで `key` 候補が得られます。
+
+最後に、候補ごとに `hash = key || msg` を送って検証すればフラグが得られます。
+
+ソルバは以下の通りです。z3を使って解いています。
+
+<details>
+<summary>ソルバ（クリックで展開）</summary>
+```python showLineNumbers
+import sys
+from pwn import *
+from z3 import *
+import inspect
+
+import aes
+
+def oracle(idx, h=None):
+    with remote("35.194.108.145", 54140) as sc:
+        sc.sendlineafter(b"pos: ", str(idx).encode())
+        sc.recvuntil(b"ct: ")
+        ct = bytes.fromhex(sc.recvline().decode())
+        if h is not None:
+            sc.sendlineafter(b"hash: ", h.hex().encode())
+            return sc.recvline()
+        return ct
+
+
+source = bytearray(inspect.getsource(aes), "utf-8")
+
+ct1 = oracle(source.index(b"for i in range(4):", source.index(b"add_round_key")) * 8 + 122) # for i in range(0):
+ct2 = oracle(source.index(b"{16: 10, ") * 8 + 40) # {16: 00,
+
+def decrypt_block(ciphertext):
+    cipher_state = aes.bytes2matrix(ciphertext)
+    aes.inv_shift_rows(cipher_state)
+    aes.inv_sub_bytes(cipher_state)
+    for i in range(9, 0, -1):
+        aes.inv_mix_columns(cipher_state)
+        aes.inv_shift_rows(cipher_state)
+        aes.inv_sub_bytes(cipher_state)
+    return aes.matrix2bytes(cipher_state)
+pt = decrypt_block(ct1)
+
+s = Solver()
+subF = Function("subByte_f", BitVecSort(8), BitVecSort(8))
+for i in range(256):
+    s.add(subF(i) == aes.s_box[i])
+key_sym = [BitVec(f"key_{i}", 8) for i in range(16)]
+
+perm = [0, 5, 10, 15, 4, 9, 14, 3, 8, 13, 2, 7, 12, 1, 6, 11]
+state = [pt[i] ^ key_sym[i] for i in range(16)]
+state = [subF(v) for v in state]
+state = [state[i] for i in perm]
+state = [state[i] ^ key_sym[i] for i in range(16)]
+
+for i in range(16):
+    s.add(state[i] == ct2[i])
+while s.check() == sat:
+    m = s.model()
+    rec_key = [m[i].as_long() for i in key_sym]
+
+    print(rec_key)
+
+    res = oracle(source.index(b"# learned") * 8 + 8, h=bytes(rec_key)+pt)
+    print(res)
+    if b"wrong" not in res:
+        break
+    s.add(Or([rec_key[i] != key_sym[i] for i in range(16)]))
+```
+
+</details>

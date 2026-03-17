@@ -1,0 +1,537 @@
+[https://alpacahack.com/ctfs/round-12:title=AlpacaHack Round 12 (Crypto)]の作問を担当しました。
+実はこれがほとんど初めてのCTF作問でしたがいかがでしたでしょうか。楽しんでいただけていれば幸いです。
+各問題の解説を書いていこうと思います。
+
+[:contents]
+
+# RSARSARSARSARSARSA (39 solves)
+
+次のスクリプトとその実行結果が与えられます。
+```python showLineNumbers
+from math import gcd
+import os
+from Crypto.Util.number import getPrime, bytes_to_long
+
+e = 19
+while True:
+    p = getPrime(2048)
+    q = getPrime(2048)
+    if gcd((p - 1) * (q - 1), e) == 1:
+        break
+n = p * q
+
+flag = os.environ.get("FLAG", "Alpaca{**** REDACTED ****}")
+assert len(flag) == 26 and flag.startswith("Alpaca{") and flag.endswith("}")
+
+m = bytes_to_long((flag * 1337).encode())
+c = pow(m, e, n)
+
+print(f"{n = }")
+print(f"{e = }")
+print(f"{c = }")
+```
+
+フラグを1337回繰り返した文字列がRSAによって暗号化されており、公開鍵$n$, $e$と暗号文$c$が与えられています。
+フラグの代わりに"flag"という文字列で実験してみましょう。"flag"を`bytes_to_long`関数で整数に変換すると$\mathrm{666c6167}_{(16)}$となります。では2回結合した"flagflag"はどうなるでしょうか。実験してみると$\mathrm{666c6167666c6167}_{(16)}$となり、"flag"の場合の$\mathrm{100000001}_{(16)}$倍となります。
+同様に3回結合した"flagflagflag"は$\mathrm{666c6167666c6167666c6167}_{(16)}$で"flag"の$\mathrm{10000000100000001}_{(16)}$倍、1337回結合した場合$\sum_{i=0}^{1336} 256^{4i}$倍となります。
+フラグは26文字であることが分かっているので、得られる暗号文はフラグを$\sum_{i=0}^{1336} 256^{26i}$倍した値を暗号化したものとなります。
+よって暗号化は$m$をフラグとして、
+
+$\left(m \sum_{i=0}^{1336} 256^{26i}\right)^e = c \pmod n$
+
+と表すことができます。式変形すると、
+
+$m^e = c \left((\sum_{i=0}^{1336} 256^{26i})^e\right)^{-1} \pmod n$
+
+となり、フラグを直接暗号化した場合の暗号文が計算できました。
+
+更に、$e$が19と小さいことに注目します。一般的に$e$としては65537が選ばれることが多いです。$e$が小さいことは直接的にはRSAの安全性には影響を与えませんが、
+[https://furutsuki.hatenablog.com/entry/2021/03/16/095021:title=CTF crypto 逆引き]などにもある通り、$m^e < n$を満たす場合には、単純に$c$の$e$乗根を計算することによって平文が復元できてしまい脆弱であることが知られています。
+実際、フラグは26文字であるため$\lg m^e < \lg \left(256^{26}\right)^e = 3952$ から$m^e$は3952bitしかなく、これは$n$の4096bitを下回るため条件を満たします。
+ソルバは以下の通りです。sympyの`root`関数を使って$e$乗根を計算しています。
+
+```python showLineNumbers
+import ast
+from sympy import root
+from Crypto.Util.number import long_to_bytes
+
+with open("./output.txt", "r") as f:
+    n = ast.literal_eval(f.readline().removeprefix("n = "))
+    e = ast.literal_eval(f.readline().removeprefix("e = "))
+    c = ast.literal_eval(f.readline().removeprefix("c = "))
+
+t = 0
+for _ in range(1337):
+    t = t * 256 ** 26 + 1
+c_flag = c * pow(t, -e, n) % n
+eth_root = root(c_flag, e)
+print(long_to_bytes(eth_root).decode())
+```
+
+一問目に置ける難易度の問題を作るのは正直ボス問を作るより難しかったです。典型問題そのままではなくちょっとひねった感じであまり見たことがない問題となっておりお気に入りの一問です。
+
+
+# OTEC (21 solves)
+
+次のスクリプトが与えられます。
+```python showLineNumbers
+import os
+import signal
+import secrets
+from fastecdsa.curve import secp256k1
+from fastecdsa.point import Point
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad
+from Crypto.Util.number import long_to_bytes
+
+signal.alarm(60)
+
+flag = os.environ.get("FLAG", "Alpaca{**** REDACTED ****}").encode()
+
+# Oblivious Transfer using Elliptic Curves
+G = secp256k1.G
+a = secrets.randbelow(secp256k1.q)
+A = a * G
+
+print(f"{A.x = }")
+print(f"{A.y = }")
+
+x, y = map(int, input("B> ").split(","))
+B = Point(x, y, secp256k1)
+
+k0 = long_to_bytes((a * B).x, 32)
+k1 = long_to_bytes((a * (B - A)).x, 32)
+
+def encrypt(message, key):
+    return AES.new(key, AES.MODE_ECB).encrypt(pad(message, 16))
+
+print(encrypt(flag[0::3], k0).hex())
+print(encrypt(flag[1::3], k1).hex())
+print(encrypt(flag[2::3], bytes(c0 ^ c1 for c0, c1 in zip(k0, k1))).hex())
+```
+
+楕円曲線を使った1-out-of-2 Oblivious Transferが実装されています。
+1-out-of-2 OTは送信者が持つ2つのメッセージのうち、受信者がどちらか一方を選んで受け取ることができ、
+
+- 送信者は受信者がどちらを受け取ったかはわからない
+- 選ばなかったほうのメッセージに関する情報は一切得られない
+
+という性質を満たすプロトコルです。今回の問題においては1つ目の性質は特に関係なく、"選ばなかったほうのメッセージに関する情報は一切得られない"という点が重要になります。
+
+サーバーと複数回通信することができるため、`flag[0::3]`と`flag[1::3]`はそれぞれで通常のOblivious Transferのプロトコルに沿って通信することによって求めることができます。
+$k_b (b \in \{0,1\})$を求めたい場合、$B = G + b A$を送ると、
+$k_0 = a B = a (G + b A) = A + b a A$
+$k_1 = a (B - A) = a (G + b A - A) = A + (b - 1) a A$
+となり、$b = 0$の場合には$k_0$を、$b = 1$の場合には$k_1$を`A.x`として求めることができます。((通常は$B = k G + b A$としますが、この問題では"送信者は受信者がどちらを受け取ったかはわからない"というのを満たす必要はないため単純に$k=1$としてよいです))
+もう一方の値を求めるためには$a A$を求める必要がありますが、これには楕円曲線上の離散対数問題を解く必要があり、`secp256k1`のような安全な楕円曲線のパラメータに対しては現実的な時間では困難であることが知られています。
+では、`k0`と`k1`のxorされた値を求めることができるでしょうか？というのがこの問題の本質的な部分です。
+前述した通り、`k0`と`k1`を両方同時に求めることは困難です。よって、それぞれの値を知ることなく`k0^k1`を求める必要があります。
+これを満たす方法として、`k0^k1 == 0`、つまり`k0 == k1`となるように`B`の値を決めることができないか考えてみましょう。
+$A / 2$を$B$として与えると、$aB = aA / 2$, $a(B - A) = a(A / 2 - A) = -aA / 2$となり、互いに逆数の関係になります。ここで、楕円曲線ではある点$A$とその逆元$-A$は共通のx座標を持ち、y座標のみが異なる値となることから、x座標のみを鍵として用いるこのプロトコルにおいては`k0 == k1`となります。
+よって`flag[2::3]`は`0000...0000`で暗号化されることとなり、フラグのすべての部分が復元できます。
+$A/2$を求める際、代わりに`secp256k1.q`を法とした2の逆元`pow(2, -1, secp256k1.q)`を掛けることによって計算する必要があることに注意してください。
+ソルバは以下の通りです。
+
+```python showLineNumbers
+from pwn import *
+from fastecdsa.curve import secp256k1
+from fastecdsa.point import Point
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import unpad
+
+HOST = os.getenv("HOST", "localhost")
+PORT = int(os.getenv("PORT", "9999"))
+LOCAL = os.getenv("LOCAL")
+
+G = secp256k1.G
+
+def oracle(b_func):
+    if LOCAL: sc = process(["python", "../rawdistfiles/server.py"])
+    else: sc = remote(HOST, PORT)
+    sc.recvuntil(b"A.x = ")
+    x = int(sc.recvline())
+    sc.recvuntil(b"A.y = ")
+    y = int(sc.recvline())
+    A = Point(x, y, secp256k1)
+    B = b_func(A)
+    sc.sendlineafter(b"B> ", f"{B.x},{B.y}".encode())
+    ct0 = bytes.fromhex(sc.recvline().decode())
+    ct1 = bytes.fromhex(sc.recvline().decode())
+    ct2 = bytes.fromhex(sc.recvline().decode())
+    return ct0, ct1, ct2, A
+
+ct0, _, _, A0 = oracle(lambda A: G)
+_, ct1, _, A1 = oracle(lambda A: A + G)
+_, _, ct2, A2 = oracle(lambda A: A * pow(2, -1, secp256k1.q))
+
+k0 = long_to_bytes(A0.x, 32)
+k1 = long_to_bytes(A1.x, 32)
+k2 = b"\0" * 32
+
+pt0 = unpad(AES.new(k0, AES.MODE_ECB).decrypt(ct0), 16)
+pt1 = unpad(AES.new(k1, AES.MODE_ECB).decrypt(ct1), 16)
+pt2 = unpad(AES.new(k2, AES.MODE_ECB).decrypt(ct2), 16)
+print(bytes([[pt0, pt1, pt2][i%3][i//3] for i in range(len(pt0) + len(pt1) + len(pt2))]).decode())
+
+```
+
+よくわからない暗号プロトコルと楕円曲線と、どちらも難しいがちで初心者には忌避されるように思いますが、解法はかなりシンプルで試行錯誤の中でたどり着ける範囲ではあるのかなと思います。
+見た目はすごく安全そうでも実は脆弱というのはCryptoジャンルの問題の面白いところの一つで、そんなところを感じていただけたら嬉しいです。
+
+
+# Flag Sharing (6 solves)
+
+次のスクリプトとその実行結果が与えられます。
+```python showLineNumbers
+import os
+import secrets
+from Crypto.Util.number import getPrime, bytes_to_long
+
+N = 10
+
+def random_poly(t):
+    return [secret] + [secrets.randbelow(p) for _ in range(t - 1)]
+
+def evaluate(f, x):
+    return sum(c * pow(x, i, p) for i, c in enumerate(f)) % p
+
+p = getPrime(512)
+flag = os.environ.get("FLAG", "Alpaca{************* REDACTED *************}")
+assert len(flag) == 44 and flag.startswith("Alpaca{") and flag.endswith("}")
+secret = bytes_to_long(flag.encode())
+
+xs = [secrets.randbelow(p) for _ in range(N)]
+f = random_poly(N)
+shares = [evaluate(f, x) for x in xs]
+
+print(f"{p = }")
+print(f"{xs = }")
+
+for i, share in enumerate(shares, 1):
+    print(hex(share)[:-i] + "?" * i)
+```
+
+定数項にフラグを持つランダムな多項式$f$に対し、10個の$x$とその$x$で評価した値$f(x)$の上位bitが得られています。
+これはShamir's secret sharingという秘密分散のアルゴリズムに似ています。
+通常のShamir's secret sharingのプロトコルでは多項式の次数+1個のシェア（$x, f(x)$の組）を集めると共有した値$a_0$が復元できますが、この際どうやって復元するのかを考えると、ラグランジュ補間を使って以下のように計算されています。
+$a_0 = \sum_{i=0}^{N-1} s_i \prod_{j=0, j \neq i}^{N-1} x_j / (x_j - x_i) \pmod p$
+
+$x$はすべて得られていることから、$s$に関する線形和でフラグを表すことができます。また、シェアのうち未知の部分が小さいことから、LLLを使ってシェアとフラグを復元できそうと考えることができます。では、LLLの格子の基底行列の構成方法について考えましょう。
+まず、$s_i$を既知の部分$k_i$と$u_i$に分割して$s_i = 16^{i+1} k_i + u_i$と表します。
+フラグのうち`Alpaca{}`の部分は既知なので、
+$a_0 = \mathrm{416c70616361}_{(16)} \times 256^{37} + 256 f + \mathrm{7d}_{(16)}$とおきます。
+
+これで、未知の値は$u_i$と$f$だけになりました。
+
+先程の式に代入すると、
+$c + 256 f = \sum_{i=0}^9 \lambda_i (16^{i+1} k_i + u_i) \pmod p$
+となります。
+
+（$\lambda_i = \prod_{j=0, j \neq i}^9 x_j / (x_j - x_i), c = \mathrm{416c70616361}_{(16)} \times 256^{37} + \mathrm{7d}_{(16)}$ とおきました。）
+
+ここで、未知数の大きさを計算すると、$u_i$は$4i$ bit、$f$は$36$ byte（最上位bitは0のため$36 \times 8 - 1 = 287$ bit）であり、合計で
+$287 + \sum_{i=1}^{10} 4i = 507$ bit となります。
+$p$の大きさは512bitなので、507bitの自由度であれば解が一意に特定できそうです。
+
+$f$と$u_i$からなるベクトルを含むように格子を構成すると、例えば以下のようにできます。
+
+$C = -c+\sum_{i=0}^9 \lambda_i k_i 16^{i+1}$
+
+$[u, 1, k\$ \begin{pmatrix}
+256^{-1} \lambda_0 & 1 & 0 & \dots & 0 & 0 \\
+256^{-1} \lambda_1 & 0 & 1 & \dots & 0 & 0 \\
+\vdots & \vdots & \vdots & \ddots & \vdots & \vdots \\
+256^{-1} \lambda_9 & 0 & 0 & \dots & 1 & 0 \\
+256^{-1} C & 0 & 0 & \dots & 0 & 1 \\
+p & 0 & 0 & \dots & 0 & 0
+\end{pmatrix} \\
+ = (f, u_0, u_1, \dots, u_9, 1)]
+
+更に、縮約されたベクトルの各要素の大きさを揃えるため、次のようにスケーリングします。
+
+$[u, 1, k\$ \begin{pmatrix}
+256^{-1} \lambda_0 & 2^{283} & 0 & \dots & 0 & 0 \\
+256^{-1} \lambda_1 & 0 & 2^{279} & \dots & 0 & 0 \\
+\vdots & \vdots & \vdots & \ddots & \vdots & \vdots \\
+256^{-1} \lambda_9 & 0 & 0 & \dots & 2^{247} & 0 \\
+256^{-1} C & 0 & 0 & \dots & 0 & 2^{286} \\
+p & 0 & 0 & \dots & 0 & 0
+\end{pmatrix} \\
+ = (f, 2^{283} u_0, 2^{279} u_1, \dots, 2^{247} u_9, 2^{286})]
+
+この行列に対してLLLなどの格子基底簡約を適用したいですが、残念ながらこの行列では目的のベクトルは得られません（この問題はかなりboundが厳しめになるようにしています）。
+スケーリング後の目的のベクトルは各値が$[0, 2^{287}$]に分布します。この値から$2^{286}$を引いて$[-2^{286}, 2^{286}$]の分布に移動させると目的のベクトルのノルムを平均的に小さくすることができ、より簡約後の格子の基底ベクトルとして現れやすくできます。
+
+$[u, 1, k\$ \begin{pmatrix}
+256^{-1} \lambda_0 & 2^{283} & 0 & \dots & 0 & 0 \\
+256^{-1} \lambda_1 & 0 & 2^{279} & \dots & 0 & 0 \\
+\vdots & \vdots & \vdots & \ddots & \vdots & \vdots \\
+256^{-1} \lambda_9 & 0 & 0 & \dots & 2^{247} & 0 \\
+256^{-1} C - 2^{286} & -2^{286} & -2^{286} & \dots & -2^{286} & 2^{286} \\
+p & 0 & 0 & \dots & 0 & 0
+\end{pmatrix} \\
+ = (f - 2^{286}, 2^{283} u_0 - 2^{286}, 2^{279} u_1 - 2^{286}, \dots, 2^{247} u_9 - 2^{286}, 2^{286})]
+
+この行列にLLLを適用することにより、目的のベクトル、そしてフラグが得られます。
+ソルバは以下の通りです。
+
+```python showLineNumbers
+import ast
+import string
+from sage.all import *
+from Crypto.Util.number import long_to_bytes, bytes_to_long
+
+with open("../distfiles/output.txt", "r") as f:
+    p = ast.literal_eval(f.readline().removeprefix("p = "))
+    xs = ast.literal_eval(f.readline().removeprefix("xs = "))
+    share = []
+    for line in f.readlines():
+        share.append(int(line.rstrip("?\n"), 16))
+
+N = 10
+c = bytes_to_long(b"Alpaca{".ljust(44 - 1, b"\0") + b"}")
+lam = [product(-xs[j] * pow(xs[i]-xs[j], -1, p) % p for j in range(N) if i != j) for i in range(N)]
+
+inv256 = pow(256, -1, p)
+const = (sum(share[i]*2**(4*(i+1)) * lam[i] for i in range(N)) - c) % p
+
+M = block_matrix([
+    [Matrix([lam[i] * inv256 % p for i in range(N)]).T, diagonal_matrix([2**(287-4*(i+1)) for i in range(N)]), zero_matrix(N, 1)],
+    [(const*inv256-2**286) % p, Matrix([-2**286]*N), 2**286],
+    [p, zero_matrix(1, N), 0]
+])
+
+for row in M.LLL():
+    f = long_to_bytes(int(row[0]) + 2**286)
+    if all(ch in string.printable.encode() for ch in f):
+        print(f"Alpaca{{{f.decode()}}}")
+        break
+```
+
+$2^{286}$を引く方法以外に、フラグの一文字目を全探索することでも目的のベクトルの大きさを小さくすることができ、同様にフラグが得られます。
+LLLの問題はboundに余裕を持たせてあることも多いですが、もう少しのところで目的のベクトルが得られないというときにどうしますか？というところを考えるのもなかなかおもしろいと思います。
+
+# Zero-sum game (3 solves)
+
+次のスクリプトが与えられます。
+```python showLineNumbers
+import os
+import random
+import signal
+from functools import lru_cache
+
+
+@lru_cache
+def _nimber_mul(x, y, p=512):
+    assert x.bit_length() <= p and y.bit_length() <= p
+    if x == 0 or y == 0:
+        return 0
+    if x == 1:
+        return y
+    if y == 1:
+        return x
+    p >>= 1
+    lx, rx = x >> p, x & (1 << p) - 1
+    ly, ry = y >> p, y & (1 << p) - 1
+    rr = _nimber_mul(rx, ry, p)
+    ll = _nimber_mul(lx, ly, p)
+    lz = _nimber_mul(lx ^ rx, ly ^ ry, p) ^ rr
+    rz = _nimber_mul(1 << (p - 1), ll, p) ^ rr
+    return lz << p | rz
+
+class Nimber:
+    def __init__(self, value):
+        self.value = value
+    def __add__(self, other):
+        return Nimber(self.value ^ other.value)
+    def __sub__(self, other):
+        return Nimber(self.value ^ other.value)
+    def __mul__(self, other):
+        return Nimber(_nimber_mul(self.value, other.value))
+    def __pow__(self, e):
+        assert e >= 0
+        a = self
+        r = Nimber(1)
+        while e > 0:
+            if e % 2 == 1:
+                r = r * a
+            a *= a
+            e //= 2
+        return r
+    def __repr__(self):
+        return str(self.value)
+
+
+signal.alarm(90)
+flag = os.environ.get("FLAG", "Alpaca{**** REDACTED ****}")
+atk = Nimber(random.getrandbits(512))
+hp = Nimber(random.getrandbits(512))
+
+print(f"Your ATK: {atk}")
+print("Show your power!")
+for turn in range(4):
+    print(f"Turn #{turn+1}")
+    print(f"Enemy HP: {hp}")
+    power = int(input("> "))
+    assert 0 <= power < 2**512
+    hp -= atk ** power
+    if hp.value == 0:
+        print("You win!")
+        print(f"Reward: {flag}")
+        exit()
+print("You lose...")
+```
+
+atk,hpがランダムな512bitのNimberとして与えられており、
+$a^{p_1} \oplus a^{p_2} \oplus a^{p_3} \oplus a^{p_4} = h$ となるような $p$ を求める問題です。
+ただし和、積はNimberの和、積演算です。
+ほとんどの人はNimberというものに初めて触れたと思いますが、Nimberは組み合わせゲーム理論で出てくる謎の体です。競技プログラミングの世界では高度典型として一部で知られて(?)います。
+Nimberの世界では、和はビットごとのXORで求まります。一方、積は$x \otimes y := \mathrm{mex}\left(\{(x' \otimes y) \oplus (x \otimes y') \oplus (x' \otimes y') : x' < x, y' < y\}\right)$と定義されています。これは意味が分からないので、謎の演算で定義されているんだなあだとブラックボックス的に理解してもこの問題では特に問題ありません。
+
+
+この問題で使うNimberの性質は主に以下の5つです。
+
+1. $2^n$ bit以下のNimberは和と積について閉じており、有限体 $\mathrm{GF}(2^{2^n})$ と同型
+2. $P = 2^{2^{n-1}}, x < 2^{2^{n-1}}$ とすると、$x \otimes P$ は通常の積 $x \times P$ に等しい
+3. 任意のNimber $x$ は $x_h, x_l < 2^{2^{n-1}}$ を用いて $x = x_h P \oplus x_l$ と一意に表せる
+4. $2^n$ bit以下任意のNimber $a$ に対して、$a^{2^{2^{n-1}}+1}$ は $2^{n-1}$ bit以下となる
+5. $a^{-1} = a^{2^{2^n}-2}$ と逆元が計算できる
+
+まず、直接DLPを解くことによって$a^p = h$となるような$p$が求まるか考えたいです。しかし、これができてしまうと$\mathrm{GF}(2^{512})$から同型写像で行き来することによって$\mathrm{GF}(2^{512})$上のDLPも解けてしまうことから、おそらく不可能だと結論付けることができます。逆に、$\mathrm{GF}(2^{2^{n}})$上のDLPが解けるのであれば、同型写像で行き来して$2^n$ bitのNimber上のDLPも解くことができそうです。$\mathrm{GF}(2^m)$ のDLPは関数体篩法などの高速なアルゴリズムの実装がすでに存在し、$m=128$であればSageMathの`log`関数などを使って10秒程度で解くことができます((古いバージョンだと遅い実装が使われておりもう少し時間がかかるようです https://github.com/sagemath/sage/issues/32842))。
+よって、
+
+1. 128bit Nimberから$\mathrm{GF}(2^{128})$への同型写像を構成する
+2. 128bit NimberのDLP oracleが呼び出せる状況で$a^{p_1} \oplus a^{p_2} \oplus a^{p_3} \oplus a^{p_4} = h$ となるような $p$ を構成する
+
+の2つができればこの問題を解くことができます。
+
+1. 同型写像の構成
+$\mathrm{GF}(2^{128})$、つまり$\mathbb{F}_2[x\$/(P(x))]から128bit Nimberへの同型写像を$f(a)$とします。
+$a = \sum_i x^{e_i}$ と分解できるとしたとき、$f(a) = \sum_i f(x^{e_i})$ が成り立ちます。つまり、各項$x^i$があるNimberに対応しており、その和で写像が表せます。
+ここで、適当な128bitのNimber $\alpha$が$x$と対応付けられると仮定します。
+このとき、$x^i (0 \leq i < 128)$に対応するNimberは$\alpha^i$となります。よって、
+$f(a) = \sum_i \alpha^{e_i}$ と計算できます。
+128bit Nimberから$\mathrm{GF}(2^{128})$への同型写像はこの逆写像です。$\alpha^i$の各ビットを要素とする128要素のベクトルを並べた$\mathrm{GF}(2)$上の$128 \times 128$行列を考え、その逆行列を計算すると構成できます。
+このとき、$\mathrm{GF}(2^{128})$の生成多項式は$P(x)=f^{-1}(\alpha^{128})+x^{128}$となります。
+
+2. $p$の構成
+まず256bitのNimber $a', h'$ に対してDLPオラクル2回の呼び出しによって$a'^{p_1} \oplus a'^{p_2} = h'$となるような$p$を求めます。
+$h' = h'_1 a' \oplus h'_2$ と分解します（$h'_1, h'_2$は128bitのNimber）。この分解は存在する場合一意で、$h'_1 = h'_h a'^{-1}_h, h'_2 = h' \oplus h'_1 a'$ と計算できます。
+あとは$h'_1 = a'^p$ となるような$p$（$h'_2$についても同様）を求めることができればよいですが、$h_1$が128bitであることから$p_1$は必ず$2^{128}+1$の倍数となります。よって、$h'_1$と$a'^{2^{128}+1}$の間のDLPをオラクルに問い合わせて解けば$p_1, p_2$が求まります。
+
+さて、この議論は512bitのNimberに対しても同様に適用できます。つまり、512bitのNimber $a, h$に対して
+$h = h_1 a \oplus h_2$と分解し、
+$a^{p_1} \oplus a^{p_2} = h_1$, $a^{p_3} \oplus a^{p_4} = h_4$となるような$p_1$〜$p_4$を求めることで$h = a^{p_1+1} \oplus a^{p_2+1} \oplus a^{p_3} \oplus a^{p_4}$と表すことができます。
+ソルバは以下の通りです。
+
+```python showLineNumbers
+from functools import lru_cache
+from sage.all import *
+from pwn import *
+
+HOST = os.getenv("HOST", "localhost")
+PORT = int(os.getenv("PORT", "9999"))
+LOCAL = os.getenv("LOCAL")
+
+@lru_cache
+def nimber_mul(x, y, p=512):
+    assert x.bit_length() <= p and y.bit_length() <= p
+    if x == 0 or y == 0:
+        return 0
+    if x == 1:
+        return y
+    if y == 1:
+        return x
+    p >>= 1
+    lx, rx = x >> p, x & (1 << p) - 1
+    ly, ry = y >> p, y & (1 << p) - 1
+    rr = nimber_mul(rx, ry, p)
+    ll = nimber_mul(lx, ly, p)
+    lz = nimber_mul(lx ^ rx, ly ^ ry, p) ^ rr
+    rz = nimber_mul(1 << (p - 1), ll, p) ^ rr
+    return lz << p | rz
+
+def nimber_div(x, y, p=256):
+    return nimber_mul(x, nimber_power(y, 2**p-2))
+
+def nimber_power(a, e):
+    r = 1
+    while e > 0:
+        if e % 2 == 1:
+            r = nimber_mul(r, a)
+        a = nimber_mul(a, a)
+        e //= 2
+    return r
+
+m = 128
+a = random.randrange(1, 1<<m)
+mat = []
+for i in range(m):
+    x = nimber_power(a, i)
+    mat.append([x >> i & 1 for i in range(m)])
+mat = Matrix(GF(2), mat)
+x = nimber_power(a, m)
+x = vector(GF(2), [x >> i & 1 for i in range(m)])
+u = x * mat ** -1
+F = GF(2**m, "a", modulus=list(u) + [1])
+
+def to_field(x):
+    x = vector(GF(2), [x >> i & 1 for i in range(m)])
+    u = x * mat ** -1
+    return F(u)
+
+def to_nimber(x):
+    x = x.to_integer()
+    x = vector(GF(2), [x >> i & 1 for i in range(m)])
+    u = x * mat
+    return sum(int(u[i]) << i for i in range(m))
+
+def make(P, Q, p):
+    if p == 64:
+        return [to_field(Q).log(to_field(P))]
+    ph, pl = P>>p, P&(2**p-1)
+    qh, ql = Q>>p, Q&(2**p-1)
+    n = 2**p
+    P2 = nimber_power(P, n+1)
+    t = make(P2, nimber_div(qh, ph, p), p>>1)
+    a = 0
+    for v in t:
+        a ^= nimber_power(P, (n+1)*v+1)
+    u = make(P2, ql ^ (a % n), p>>1)
+    return [(n+1)*v+1 for v in t] + [(n+1)*v for v in u]
+
+while True:
+    start = time.time()
+    if LOCAL: sc = process(["python", "../rawdistfiles/server.py"])
+    else: sc = remote(HOST, PORT)
+    sc.recvuntil(b": ")
+    P = int(sc.recvline())
+    sc.recvuntil(b": ")
+    Q = int(sc.recvline())
+    try:
+        s = make(P, Q, 256)
+    except ValueError:
+        print("failed")
+        sc.close()
+        continue
+    print(time.time() - start)
+    for v in s:
+        sc.sendlineafter(b"> ", str(v).encode())
+    sc.recvline()
+    print(sc.recvline())
+    print(time.time() - start)
+    break
+
+```
+
+ところで、この問題はNimberの話を一切出さずに$\mathrm{GF}(2^{512})$の問題として出題することも可能でした。
+その場合$\mathrm{GF}(2^{256})$からの二次拡大を考えると概ね同様の解法で解くことができるのですが、この問題ではNimberの性質を使うことでより解法の方針が立ちやすくなっています。
+最初は「CTFでNimberが出たら面白いやろ！w」みたいなノリで作った問題でしたが、First Bloodのsoon-haariさんにも`one of the most memorizable chall to me this year`と言っていただき、結果的にかなり面白い問題に昇華できて良かったと思います。
+
+# 総評
+
+CTFtime運営の対応が遅くCTFtimeに掲載されなかったようで、参加者数が想定の1/3くらいでした。許せねえ。
+最終的に解かれた数は前から39-21-6-3でした。開始前の予想は100-65-20-3だったので全体を3倍したら大体当たってますね。AlpacaHackのRoundは4問しかないのもあって毎回崖ができがちですが、かなり理想的な傾斜になったのではないかと思います。
+もともと5問出題予定だったのですが、セット的に5問だとさすがに6時間では重すぎるということで4問目が消え、今の4問になりました。結果的に4問に減らして正解だったように思います。消えた問題はまたいつかどこかで出そうと思います。
+
+また、筑波大学のCTFチームTPCでtkbctfというCTFを冬ごろ開催予定です。そちらにもCryptoなどの問題をいくつか出す予定ですので是非ご参加ください。6時間CTFでは重くて出せない難易度の問題もあり、それなりに骨のあるセットになるかなと思います。よろしくお願いします。

@@ -1,0 +1,43 @@
+---
+title: "Fault Tolerance Py"
+categories: ["misc"]
+solves: 8
+---
+# Challenge
+The program you submit is repeatedly executed with one character deleted at a time, varying the deletion position. For every possible deletion, the code must terminate without error and the output must match the full original program text. If the conditions are met, the flag is output.
+
+# Solution
+
+Syntax constructs using keywords like `if` or `for`, and constructs using brackets like `()` or `[]`, are basically unusable. However, the following three-step approach solves the challenge.
+
+1. Somehow declare a variable with an arbitrary name
+2. Somehow construct a string
+3. Somehow execute `exec`
+
+There are several approaches for each, but for steps 1 and 2, the following method reliably assigns a string containing `print(1)` to the variable `xxx`:
+```
+xxx=xxx=xxx=rf="""" ";print(1)#"""##"""
+```
+To prevent a specific variable name from causing a `NameError` (not limited to strings), the following approach also works:
+```
+xxx:11=22;;xxx:11=22;
+```
+
+Next, consider how to `exec` this string `xxx`. As mentioned above, syntax like `exec(xxx)` breaks if the parentheses are deleted, so we need a way to call a function without parentheses.
+
+By executing `help.__class__.__lt__ = exec`, subsequent executions of `xxx > help` will call `exec(xxx)`. We use this approach.
+
+We also need to handle the case where the string literal to be `exec`-ed is destroyed. So we store the string to be `exec`-ed in all of AAA, BBB, and CCC. Since only one position is deleted, at least two of these strings will remain intact.
+The following processing guarantees that `exec` is called with a correct string by one of the comparison operators. This relies on the fact that in chained comparisons, subsequent comparisons are only evaluated if the preceding comparison is `True`.
+To avoid multiple executions, calling `exit(0)` inside the `exec`-ed code is recommended.
+```python
+AAA==BBB>help;
+AAA==CCC>help;
+BBB>help;
+```
+
+Now arbitrary code can be executed. From here, the flag can be obtained using the same method as a standard Quine.
+
+A similar challenge is Fault Tolerance from IERAE CTF 2025. The challenge setup is the same, but this is a Python radiation-hardened Quine challenge rather than JS.
+This challenge was in my challenge stockpile before IERAE CTF 2025 was held, but it was released there first.
+As far as I could find, there were no examples of achieving a radiation-hardened Quine in Python, but it turns out there was [an answer posted on codegolf.stackexchange.com](https://codegolf.stackexchange.com/a/276750/88546) for Python.

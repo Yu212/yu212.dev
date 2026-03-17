@@ -1,0 +1,382 @@
+---
+title: "El Dorado"
+categories: ["crypto"]
+solves: 1
+---
+# Challenge
+
+The following server is given.
+
+```python showLineNumbers
+import os
+import random
+
+flag = os.environ.get("FLAG", "tkbctf{dummy}")
+random.seed(os.urandom(64))
+print([random.random() for _ in range(131)])
+
+happiness = 0
+next_val = random.random()
+while abs(happiness) < 10**6:
+    if float(input()) == next_val:
+        print("correct :)")
+        happiness += 1
+        next_val = random.random()
+    else:
+        print("incorrect :(")
+        happiness -= 1
+if happiness < 0:
+    print("Too unhappy...")
+else:
+    print("I'm very happy now! Here is the flag:", flag)
+```
+
+Upon connecting, you receive 131 values from `random.random()`. Then an oracle begins where you must keep guessing the next `random.random()` value. If the cumulative correct count exceeds the cumulative incorrect count by $10^6$, you get the flag.
+
+# Solution
+
+We use the following definitions throughout.
+
+- `init_key`: the length-32 array passed to `init_by_array`
+- `seed`: the length-624 array, the sequence of values `init_key[j] + j` used in the second loop of `init_by_array`
+- `state`: the MT19937 internal state immediately after `init_by_array` completes (a length-624 array of 32-bit integers)
+- `output`: the array after applying the `twist` operation to `state`
+- `tempered`: the 32-bit value obtained by applying the `temper` transform to `output[i]`
+
+## 1. Internal behavior of `random.seed`
+
+Inside `random.seed(os.urandom(64))`, the given 64-byte value `a` is extended as `a = int.from_bytes(a + sha512(a).digest())` by appending a SHA-512 hash,
+then after endianness conversion and conversion to an array of 32-bit words, it is passed to `init_by_array` as `init_key`.
+Therefore, `init_key[0:16]` corresponds to the reverse of `sha512(a)`, and `init_key[16:32]` corresponds to the reverse of the original 64-byte seed `a`.
+
+`init_by_array` is as follows:
+
+```python showLineNumbers
+def init_by_array(init_key):
+    mt = [0] * 624
+    mt[0] = 19650218
+    for i in range(1, 624):
+        mt[i] = (0x6c078965 * (mt[i-1] ^ (mt[i-1] >> 30)) + i) & 0xffffffff
+    i = 1
+    j = 0
+    for _ in range(max(624, len(init_key))):  # len(init_key)=32, so 624 iterations
+        mt[i] = ((mt[i] ^ (mt[i-1] ^ (mt[i-1] >> 30)) * 1664525) + init_key[j] + j) & 0xffffffff
+        i += 1
+        j += 1
+        if i >= 624:
+            mt[0] = mt[623]
+            i = 1
+        if j >= len(init_key):
+            j = 0
+    for _ in range(623):
+        mt[i] = (mt[i] ^ ((mt[i-1] ^ (mt[i-1] >> 30)) * 1566083941)) - i & 0xffffffff
+        i += 1
+        if i >= 624:
+            mt[0] = mt[623]
+            i = 1
+    mt[0] = 0x80000000
+    return mt
+```
+
+In the second loop, `j` cycles with period `len(init_key) = 32` over 624 iterations. Therefore, the value `seed[k]` used in the $k$-th iteration and `seed[k+32]` used in the $(k+32)$-th iteration are always the same.
+
+## 2. Output format of `random.random()`
+
+The CPython implementation of `random.random()` is as follows:
+
+```c showLineNumbers
+static PyObject *
+_random_Random_random_impl(RandomObject *self)
+{
+    uint32_t a=genrand_uint32(self)>>5, b=genrand_uint32(self)>>6;
+    return PyFloat_FromDouble((a*67108864.0+b)*(1.0/9007199254740992.0));
+}
+```
+
+It combines the upper 27 bits of the first 32-bit output and the upper 26 bits of the second to compute a 53-bit precision floating-point number.
+Working backwards, the 131 values given as `[random.random() for _ in range(131)]` at the start allow us to recover the upper bits of each `tempered[0:262]` without error as follows.
+On the other hand, the lower 5 bits of even-indexed and lower 6 bits of odd-indexed entries are lost here and cannot be recovered directly from the input.
+
+```python showLineNumbers
+leak = []
+for i in range(131):
+    v = int(raw_leak[i] * 0x20000000000000)
+    v1, v2 = v >> 26, v & 0x3ffffff
+    leak += [v1 << 5, v2 << 6] # lower bits unknown
+```
+
+## 3. Inverse twist and the `untwist` function
+
+CPython's twist operation updates the MT array in-place. Processing from index 0 in order means that for positions $i \geq N - M = 624 - 397 = 227$, the reference at $i - 227$ is the already-updated `output[i-227]`. Therefore the twist formula can be written as follows (where $f(x) = (x \gg 1) \oplus (x \mathbin{\&} 1) \times \texttt{0x9908b0df}$):
+
+$$\text{output}[i] = \text{output}[i-227] \oplus f\bigl((\text{state}[i] \mathbin{\&} \texttt{0x80000000}) \mid (\text{state}[i+1] \mathbin{\&} \texttt{0x7fffffff})\bigr) \quad (i \geq 227)$$
+
+Rearranging:
+
+$$f^{-1}(\text{output}[i] \oplus \text{output}[i-227]) = (\text{state}[i] \mathbin{\&} \texttt{0x80000000}) \mid (\text{state}[i+1] \mathbin{\&} \texttt{0x7fffffff})$$
+
+Since untemper is a linear transformation over GF(2):
+
+$$\text{untemper}(\text{tempered}[i] \oplus \text{tempered}[i-227]) = \text{output}[i] \oplus \text{output}[i-227]$$
+
+holds. Therefore, knowing `tempered[i]` and `tempered[i-227]`, we can compute
+
+$$f^{-1}(\text{untemper}(\text{tempered}[i] \oplus \text{tempered}[i-227]))$$
+
+to obtain the most significant bit of `state[i]` and the lower 31 bits of `state[i+1]`.
+
+However, `tempered[227+i] ^ tempered[i]` has its lower 6 bits missing. We denote this unknown lower 6 bits as `low[i]`.
+
+The most significant bit of `state[i]` is uniquely determined by the upper 26 bits of `tempered[227+i] ^ tempered[i]` regardless of `low[i]`, but to recover the lower 31 bits of `state[i+1]`, we need to find `low[i]`.
+
+## 4. `ith_seed`: computing `seed` from the internal state
+
+By inverting `init_by_array`, we can compute `seed` from `state` as follows (though `seed[0]` etc. cannot be uniquely determined):
+
+```python showLineNumbers
+def state2seed(state):
+    assert state[0] == 0x80000000
+    state_ = [0] * 624
+    state_[1] = ((state[1] + 1) ^ ((state[623] ^ (state[623] >> 30)) * 1566083941)) & 0xffffffff
+    for i in reversed(range(3, 624)):
+        state_[i] = ((state[i] + i) ^ (state[i-1] ^ (state[i-1] >> 30)) * 1566083941) & 0xffffffff
+    state_[2] = ((state[2] + 2) ^ (state_[1] ^ (state_[1] >> 30)) * 1566083941) & 0xffffffff
+    mt = [0] * 624
+    mt[0] = 19650218
+    for i in range(1, 624):
+        mt[i] = (0x6c078965 * (mt[i - 1] ^ (mt[i - 1] >> 30)) + i) & 0xffffffff
+    seed = [-(mt[1] ^ (mt[0] ^ (mt[0] >> 30)) * 1664525) & 0xffffffff]
+    seed.append((state_[2] - mt[2]) & 0xffffffff)
+    for i in range(2, 623):
+        seed.append((state_[i+1] - (mt[i+1] ^ (state_[i] ^ (state_[i] >> 30)) * 1664525)) & 0xffffffff)
+    seed.append((state_[1] - (state_[623] ^ (state_[623] >> 30)) * 1664525) & 0xffffffff)
+    return seed
+```
+
+Furthermore, we can see that `seed[i]` ($3 \leq i \leq 622$) can be computed from `state[i-1], state[i], state[i+1]` as follows:
+
+```python showLineNumbers
+mt = [0] * 624
+mt[0] = 19650218
+for i in range(1, 624):
+    mt[i] = (0x6c078965 * (mt[i - 1] ^ (mt[i - 1] >> 30)) + i) & 0xffffffff
+
+f = lambda x: (x ^ (x >> 30)) * 1664525
+g = lambda x: (x ^ (x >> 30)) * 1566083941
+def _ith_seed(x, y, z, i):
+    a = ((y + i) ^ g(x)) & 0xffffffff
+    b = ((z + i+1) ^ g(y)) & 0xffffffff
+    return (b - (mt[i+1] ^ f(a))) & 0xffffffff
+
+def ith_seed(i):
+    return _ith_seed(state[i-1], state[i], state[i+1], i)
+```
+
+## 5. Enumerating initial candidates
+
+We compute `seed[229]` and `seed[261]` as follows.
+
+Brute-force all combinations of `low[0], low[1], low[2]` ($2^{18}$ cases).
+From these, we obtain `state[228], state[229], state[230]`, and can compute `seed[229]` as `_ith_seed(state[228], state[229], state[230], 229)`.
+
+Brute-force `low[32], low[33], low[34]` and the most significant bit of `state[262]` ($2^{19}$ cases).
+From these, we obtain `state[260], state[261], state[262]`, and can compute `seed[261]` as `_ith_seed(state[260], state[261], state[262], 261)`.
+
+Since `seed[229] = seed[261]`, matching these two allows us to narrow down the correct `low` combinations.
+Brute-forcing all $2^{18} \times 2^{19} = 2^{37}$ combinations across both groups and keeping only those satisfying this condition leaves an expected $2^{37} / 2^{32} = 2^5$ candidates.
+
+## 6. Extending with the oracle and recovering `seed`
+
+For each combination of `low[1], low[2], low[33], low[34]` narrowed down above, brute-force `low[3]` additionally. Then:
+
+`seed[230]` can be computed as `_ith_seed(state[229], state[230], state[231], 230)`.
+
+From `_ith_seed(state[261], state[262], z, 262) == seed[230]`, solving for `z` gives $2^6$ candidates for `z`, i.e., for `state[263]`.
+
+```python showLineNumbers
+def solve_z(s, x, y, i):
+    a = ((y + i) ^ g(x)) & 0xffffffff
+    # s == (b - (mt[i+1] ^ f(a))) & 0xffffffff
+    b = s + (mt[i+1] ^ f(a)) & 0xffffffff
+    # b = ((z + i+1) ^ g(y)) & 0xffffffff
+    z = (b ^ g(y)) - (i+1) & 0xffffffff
+    return z
+```
+
+Repeating this twice more gives us `state[263], state[264]`, from which we can compute `output[262], output[263]` and then the next value of `random.random()`. Sending this to the server lets the oracle verify correctness.
+If `happy` is returned, the `low` combination up to that point is correct (strictly, even if not all `low` values are correct, cases that produce the same output as the correct one exist, so we narrow down by continuing further).
+
+Each oracle call yields 2 new `seed` values, so repeating this 13 times recovers `seed[229:256]`.
+`seed[240:256]` corresponds to `init_key[16:32]`, i.e., the value passed to `random.seed`, so feeding this value to our local `random` reproduces the same state as the server, allowing complete prediction of future outputs.
+
+Feeding the predicted `random.random()` values to the oracle yields the flag.
+
+Note: since $10^6$ interactions are required, sending and receiving one at a time accumulates round-trip latency and is not feasible in reasonable time. Sending multiple predicted values at once in a batch resolves this.
+
+The full solver is as follows.
+
+<details>
+<summary>Solver (click to expand)</summary>
+```python showLineNumbers
+import ast
+from pwn import *
+import itertools
+from tqdm import tqdm, trange
+
+BATCH_SIZE = 1024
+
+def temper(x):
+    x = x ^ (x >> 11)
+    x = x ^ ((x << 7) & 0x9d2c5680)
+    x = x ^ ((x << 15) & 0xefc60000)
+    x = x ^ (x >> 18)
+    return x & 0xffffffff
+def untemper(y):
+    y ^= y >> 18
+    y ^= y << 15 & 0xefc60000
+    y ^= (y << 7 & 0x9d2c5680) ^ (y << 14 & 0x94284000) ^ (y << 21 & 0x14200000) ^ (y << 28 & 0x10000000)
+    y ^= y >> 11 ^ y >> 22
+    return y
+f = lambda x: (x ^ (x >> 30)) * 1664525
+g = lambda x: (x ^ (x >> 30)) * 1566083941
+def ith_seed(x, y, z, i):
+    a = ((y + i) ^ g(x)) & 0xffffffff
+    b = ((z + i+1) ^ g(y)) & 0xffffffff
+    return (b - (mt[i+1] ^ f(a))) & 0xffffffff
+def untwist(i, d, k):
+    y = untemper(leak[i-227] ^ leak[i] ^ d)
+    s = y << 1 ^ (y >> 31) * 0x1321161bf
+    return s & 0x7fffffff | k * 0x80000000, s >> 31
+
+sc = remote("localhost", 1337)
+
+raw_leak = ast.literal_eval(sc.recvline().decode())
+
+leak = []
+for i in range(131):
+    v = int(raw_leak[i]*0x20000000000000)
+    v1, v2 = v>>26, v&0x3ffffff
+    leak += [v1<<5, v2<<6]
+
+mt = [0] * 624
+mt[0] = 19650218
+for i in range(1, 624):
+    mt[i] = (0x6c078965 * (mt[i - 1] ^ (mt[i - 1] >> 30)) + i) & 0xffffffff
+
+happiness = 0
+correct = {}
+def oracle(val):
+    global happiness
+    sc.sendline(str(val).encode())
+    res = sc.recvline(timeout=1).rstrip() == b"correct :)"
+    happiness += 1 if res else -1
+    return res
+
+def check_all(i, lst):
+    global happiness
+    ret = []
+    pbar = trange(0, len(lst), BATCH_SIZE)
+    pbar.set_description(f"{i=}")
+    for j in pbar:
+        batch = []
+        for a, b in lst[j:min(j+BATCH_SIZE, len(lst))]:
+            val = (a * 0x4000000 + b) / 0x20000000000000
+            batch.append(val)
+        sent = False
+        if i not in correct:
+            sent = True
+            sc.sendline("\n".join(map(str, batch)).encode())
+        for a, b in lst[j:min(j+BATCH_SIZE, len(lst))]:
+            if sent:
+                res = sc.recvline().rstrip()
+                assert res in (b"incorrect :(", b"correct :)"), res
+                res = res == b"correct :)"
+                happiness += 1 if res else -1
+            if i in correct:
+                ret.append(correct[i] == (a, b))
+            else:
+                ret.append(res)
+                if res:
+                    correct[i] = (a, b)
+    return ret
+
+
+def next_cands(i, dis, djs, seed_arr, K):
+    *_, d0i, d1i = dis
+    *_, d0j, d1j = djs
+    for d2i, t in itertools.product(range(64), range([2, 1][i % 2])):
+        _, k = untwist(i-31, 0, 0)
+        st231, k = untwist(i-32, d2i, k)
+        st230, k = untwist(i-33, d1i, k)
+        st229, k = untwist(i-34, d0i, k)
+        se = ith_seed(st229, st230, st231, i-32)
+
+        st262, k = untwist(i-1, d1j, K)
+        st261, k = untwist(i-2, d0j, k)
+
+        v = ((st262 + i) ^ g(st261)) & 0xffffffff
+        st263 = (((se + (mt[i+1] ^ f(v))) ^ g(st262)) - (i+1)) & 0xffffffff
+
+        x = st263 & 0x7fffffff | K * 0x80000000
+        a262 = leak[i-227] ^ temper((x >> 1) ^ (x & 1) * 0x9908b0df)
+        d2j = (a262&0x3f) ^ (t<<5)
+
+        if i % 2 == 0:
+            leak.append(a262 ^ d2j)
+            yield from next_cands(i+1, dis + [d2i], djs + [d2j], seed_arr + [se - i % 32], st263>>31)
+            leak.pop()
+        else:
+            yield (leak[-1], a262 ^ d2j, dis + [d2i], djs + [d2j], seed_arr + [se - i % 32], st263>>31)
+
+def search_last(i, seed_arr):
+    seed = b"".join([v.to_bytes(4, "big") for v in seed_arr[:-17:-1]])
+    random.seed(seed)
+    if raw_leak == [random.random() for _ in range(len(raw_leak))]:
+        print(seed)
+        print(happiness)
+        while not oracle(random.random()):
+            pass
+        cnt = -happiness + 10**6
+        for j in trange(0, cnt, BATCH_SIZE):
+            sc.sendline("\n".join(str(random.random()) for _ in range(j, min(j+BATCH_SIZE, cnt))).encode())
+            for _ in range(j, min(j+BATCH_SIZE, cnt)):
+                assert sc.recvline() == b"correct :)\n"
+        print(sc.recvline())
+        exit(0)
+
+def search(i, dis, djs, seed_arr, K):
+    if len(seed_arr) == 27:
+        search_last(i, seed_arr)
+        return
+
+    cands = list(next_cands(i, dis, djs, seed_arr, K))
+    ret = check_all(i, [(x>>5, y>>6) for x, y, _, _, _, _ in cands])
+    for res, (x, y, _dis, _djs, _seed_arr, _K) in zip(ret, cands):
+        if res:
+            print(i, x, y, len(leak))
+            leak.append(x)
+            leak.append(y)
+            search(i+2, _dis, _djs, _seed_arr, _K)
+            leak.pop()
+            leak.pop()
+
+seeds = {}
+for d0i, d1i, d2i in tqdm(itertools.product(range(64), range(64), range(64))):
+    _, k = untwist(230, 0, 0)
+    st230, k = untwist(229, d2i, k)
+    st229, k = untwist(228, d1i, k)
+    st228, k = untwist(227, d0i, k)
+    se229 = ith_seed(st228, st229, st230, 229)
+    seeds[se229] = (d0i, d1i, d2i)
+for d0j, d1j, d2j, K in itertools.product(range(64), range(64), range(64), range(2)):
+    st262, k = untwist(261, d2j, K)
+    st261, k = untwist(260, d1j, k)
+    st260, k = untwist(259, d0j, k)
+    se261 = ith_seed(st260, st261, st262, 261)
+    if se261 in seeds:
+        d0i, d1i, d2i = seeds[se261]
+        search(262, [d1i, d2i], [d1j, d2j], [se261+256], K)
+```
+</details>
+
+Creating this challenge gave me quite a bit of knowledge about MT19937 (including things not covered in this article), so I plan to write a more detailed article summarizing techniques related to MT19937. Stay tuned.

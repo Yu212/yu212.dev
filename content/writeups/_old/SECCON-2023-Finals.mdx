@@ -1,0 +1,194 @@
+TPCとしてSECCON 2023 Finalsに参加し、domestic 5位でした。writeupってヤツを書こうと思います。
+全体的にかなり雰囲気で数式を用いているため、雰囲気でお読みください。
+
+[:contents]
+
+# muck-a-mac
+## 問題概要
+ChaCha20-Poly1305によって暗号化された値を100回連続で復元するとフラグがもらえます。
+それぞれの値は次のように生成されています
+```python showLineNumbers
+self.key = secrets.token_bytes(32)
+self.nonce = secrets.token_bytes(12)
+self.plaintext = b""
+for i in range(4):
+    self.plaintext += b"\x00"*13 + secrets.token_bytes(3)
+self.aad = b""
+for i in range(16):
+    self.aad += bytes([random.choice(bytes(string.printable, 'ascii'))])
+```
+
+
+また、次の六種類のクエリを各一回ずつまで好きな順番で質問することができます。
+```python showLineNumbers
+def get_ciphertext(self, plaintext):
+    ciphertext, _ = encrypt(self.key, self.aad, plaintext, self.nonce)
+    return ciphertext
+def default(self):
+    _, mac = encrypt(self.key, self.aad, self.plaintext, self.nonce)
+    return mac
+def change_aad(self, aad):
+    _, mac = encrypt(self.key, aad, self.plaintext, self.nonce)
+    return mac
+def xor_plaintext(self, target):
+    _, mac = encrypt(self.key, self.aad, strxor(self.plaintext, target), self.nonce)
+    return mac
+def change_length(self,l,r):
+    _, mac = encrypt(self.key, self.aad, self.plaintext[l:r], self.nonce)
+    return mac
+```
+
+## 解法
+コンテスト開始直後にすべての問題を流し読みした結果、この問題が一番競プロer向きに見えたので突撃しました。
+とりあえずChaCha20-Poly1305について調べてみます。
+https://tex2e.github.io/blog/crypto/chacha20poly1305
+
+- ChaCha20 で $(R, S, K)$ を作る
+- $R, S, \mathrm{ciphertext}, \mathrm{aad}$ に謎の処理をして $(r, s, c)$ を作る
+- $\mathrm{ciphertext} = \mathrm{xor}(K, \mathrm{plaintext})$
+- $\mathrm{mac} = (c_1 r^n + c_2 r^{n-1} + ... + c_{n-1} r^2 + c_n r) \bmod (2^{130}-5) + s$
+のようにして ciphertext と mac を生成しているらしいです。
+
+key や nonce に関する情報は得られないので、ChaCha20パートは無視して (R, S, K) をただの乱数として扱うことにします。
+また、cについては、aad が16ビットで plaintext が64ビットであることから、
+c = (aad||01, ciphertext[0:16]||01, ciphertext[16:32]||01, ciphertext[32:48]||01, ciphertext[48:64]||01, len(aad)||len(ciphertext)||01)
+のようになっています（ここで、a||b はバイト列の結合）
+
+各クエリの使い方について考えます。
+- get_ciphertextに00..00を投げると ciphertext = xor(K, 00..00) = K から K が得られます。 K より有益な情報は特に得られないので最初にこれをしてよさそうです。
+- change_add に 00..00 を投げてdefaultで得られたmacと差分をとると$\mathrm{aad} \cdot r^6$が得られます。
+- change_lengthに[0,63]を投げるとcの後ろ2チャンクのみが変わるため、defaultで得られたmacと差分をとるとrについての二次式ができます。二次の係数は判明していませんが、変化するのは一バイトのみのため全探索すると256通りrの候補が得られることになります。
+ここで、$\mathrm{aad} \cdot r^6$ を用いてaadを復元することができます。間違ったrに対してaadがrintableな文字列になる確率は十分低いため、これによってrを特定することができます。
+後はxor_plaintextを使ってうまくplaintextを特定します。plaintextの各チャンクが小さいためlattice attackがしたいです。
+また、sが特定できていないので、defaultとの差分でうまくplaintextのみの多項式を作ります。
+plaintextで0でない部分を1で埋めた次のようなバイト列をxor_plaintextに投げることを考えます。
+`00000000000000000000000000ffffff00000000000000000000000000ffffff00000000000000000000000000ffffff00000000000000000000000000ffffff`
+すると、差分 $\mathrm{default} - \mathrm{xor\_plaintext}$ に対応する $c'_2$ は次のような値になっていると考えられます。（$c'_3$ から $c'_5$ も同様）
+$c'_2 = K\[0:16\$ \oplus \mathrm{plaintext}\[0:16\]-K\[0:16\] \oplus \mathrm{plaintext}\[0:16\] \oplus \mathrm{0xffffff}]
+これは上13ビットが相殺され $2^{24}$ 程度になるため、次のような格子を構成して LLL をすることによって復元できます。（係数はかなり適当です）
+
+$\begin{pmatrix}
+2^{300}p & 0 & 0 & 0 & 0 & 0 \\
+2^{300}b & 2^{128} & 0 & 0 & 0 & 0 \\
+2^{300}r^5 & 0 & 2^{100} & 0 & 0 & 0 \\
+2^{300}r^4 & 0 & 0 & 2^{100} & 0 & 0 \\
+2^{300}r^3 & 0 & 0 & 0 & 2^{100} & 0 \\
+2^{300}r^2 & 0 & 0 & 0 & 0 & 2^{100} \\
+\end{pmatrix}$
+
+（ここで、$b := (\mathrm{default} - \mathrm{xor\_plaintext})2^{-128}$ ）
+
+
+また、c'_iが分かると、$\mathrm{0xffffff} \oplus a = \mathrm{0xffffff}-a$ であることから、
+$\mathrm{plaintext}\[16i+13:16i+16\$ = (c'_i+\mathrm{0xffffff})/2  \oplus  {K\[16i+13:16i+16\]}]
+と復元できます。
+これでplaintextが復元できました。
+
+順番に実装してみるとうまく動きます。（たまに失敗します。）
+また、なぜかいろんなところで各値がほしい値より $2^{128}$ とかズレたりするようなので、強引にズレる分を探索してカバーしました。
+
+すべて実装できた時点で一日目の競技が残り10分程度でした。
+急いで実行したものの、数十ラウンドまでいったところで失敗してしまいます。最終的に91ラウンド目まで成功したところでサーバーが閉じてしまいました。
+二日目、最初に実行して提出したもののFirst Bloodはとられてしまいました。かなしい…
+
+## コード
+
+```python showLineNumbers
+def b2i(b):
+    return int.from_bytes(b, "little")
+
+def solve(chal):
+    key = chal.get_ciphertext(b"\0" * 64)
+    print(f"{key = }")
+    d_mac = chal.default()
+    print(f"{d_mac = }")
+    p = (1<<130) - 5
+    cadd = chal.change_aad(b"\0" * 16)
+    print(f"{cadd = }")
+    hint = (b2i(d_mac) - b2i(cadd)) % p # aad * r^6
+    print(f"{hint = }")
+    h2 = chal.change_length(0, 63)
+    h3 = b2i(d_mac) - b2i(h2)
+    print(f"{h3 = }")
+
+    crs = set()
+    for i in range(1, 256):
+        for k in range(-10, 10):
+            aa = i << 120
+            bb = 0x10000000000000000
+            cc = -(h3+k*(1<<128))
+            a1 = (-bb+pow(bb*bb-4*aa*cc, (p+1)//4, p))*pow(2*aa, -1, p)%p
+            a2 = (-bb-pow(bb*bb-4*aa*cc, (p+1)//4, p))*pow(2*aa, -1, p)%p
+            if (aa*a1*a1+bb*a1+cc)%p == 0:
+                crs.add(a1)
+            if (aa*a2*a2+bb*a2+cc)%p == 0:
+                crs.add(a2)
+
+    found = False
+    bcr = None
+    for cr1 in crs:
+        for k in range(-10, 10):
+            x = pow(cr1, -6, p) * (hint+k*0x100000000000000000000000000000000) % p
+            if sum(ch in string.printable.encode() for ch in long_to_bytes(int(x))[1:]) >= 15:
+                print(sum(ch in string.printable.encode() for ch in long_to_bytes(int(x))) >= 15, long_to_bytes(int(x)))
+            if all(ch in string.printable.encode() for ch in long_to_bytes(int(x))):
+                print(long_to_bytes(int(x)), hex(x))
+                bcr = cr1
+                found = True
+    b = (b2i(d_mac) - b2i(chal.xor_plaintext(b"\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\xff\xff" * 4))) % p
+    ms = 1000
+    bans = []
+
+    def fix(x, i):
+        v = (0xffffff-((x^^0xffffff)-x))//4
+        if x > 0:
+            return v ^^ b2i(key[i*16+13:i*16+16]) ^^ 0x800000
+        else:
+            return v ^^ b2i(key[i*16+13:i*16+16])
+
+    for k in range(5):
+        for kk in range(-5,5):
+            nb = int(b)
+            nb =nb-0x100000000000000000000000000000000*k-kk
+            nb *= pow(0x100000000000000000000000000, -1, p)
+            nb %= p
+            M = Matrix([
+                [2^300*int(p), 0, 0, 0, 0, 0],
+                [2^300*int(nb), 2^128, 0, 0, 0, 0],
+                [2^300*int(bcr**5%p), 0, 2^100, 0, 0, 0],
+                [2^300*int(bcr**4%p), 0, 0, 2^100, 0, 0],
+                [2^300*int(bcr**3%p), 0, 0, 0, 2^100, 0],
+                [2^300*int(bcr**2%p), 0, 0, 0, 0, 2^100],
+            ])
+            M = M.LLL()
+            for row in M:
+                if row[0] != 0 or abs(row[1]) != 0x100000000000000000000000000000000:
+                    continue
+                ans = [row[2]//2^100, row[3]//2^100, row[4]//2^100, row[5]//2^100]
+                siz = sum([int(ans[0]).bit_length(), int(ans[1]).bit_length(), int(ans[2]).bit_length(), int(ans[3]).bit_length()])
+                ans2 = b""
+                for i in range(4):
+                    if row[1] == 0x100000000000000000000000000000000:
+                        ans[i] *= -1
+                    fv = int(fix(ans[i], i))
+                    ans2 += b"\0" * 13 + int.to_bytes(fv, 3, "little")
+                if ms > siz:
+                    ms = siz
+                    bans = ans2
+    return bans
+
+ss = remote("example.com", int(0))
+for i in range(100):
+    chal = Challenge()
+    res = solve(chal)
+    print(res)
+    chal.answer(res)
+print(ss.recvline())
+print(ss.recvline())
+print(ss.recvline())
+```
+
+
+# まとめ
+去年もKOSENセキュコン枠で参加したんですが、その時は最下位でした。それと比べると今年はかなり成長したのではないかなと思います。
+来年はもうちょっとCryptoを解きたいです。がんばります。

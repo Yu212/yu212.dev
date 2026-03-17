@@ -1,0 +1,56 @@
+---
+title: "tkbctf5"
+date: "2026/03/14"
+tags: ["CTF", "tkbctf"]
+---
+
+*This English version was translated by Claude.*
+
+We held tkbctf5, a CTF, over March 14-15, 2026.
+
+The idea began about a year before when keymoon and I were talking on the way to a ramen restaurant. I reached out to members of TPC, and ultimately a team of 7 people worked on challenge creation and operations.
+Since the organizer is TPC, I initially thought it might be called TPC CTF, but someone pointed out that there was a CTF called tkbctf held 4 times at the University of Tsukuba through 2014, and that it would be interesting to revive it — so we went with the name tkbctf5.
+I would like to take this opportunity to express my gratitude to the members of the original tkbctf organizer team for kindly allowing us to use the name.
+
+As a result, 185 teams participated (teams that earned at least 1 point).
+
+![Final scoreboard](final_scoreboard.png)
+
+Before the contest I was quite nervous about how it would go, but the boss challenges in each category ended up with 2 or fewer solves, and it seems that both AI and humans struggled more than I expected across the board.
+The feedback was largely positive, and it made all the near-death operating experience worthwhile.
+
+Whether we can hold another event in future years is entirely unclear, given the state of CTF and AI and our challenge stockpiles, but if we can, I hope to hold tkbctf6 next year as well.
+
+# About the Contest Site
+
+We ended up using AlpacaHack, run by keymoon and others, as the contest platform. The reasoning was that running it on AlpacaHack seemed fun, it would be easy to keep the challenges up permanently after the contest ended, and we were familiar with the infrastructure and expected it to be manageable.
+Apparently there had long been talk about how team competition support would be nice to have, and this became the occasion to implement team functionality in AlpacaHack.
+However, as we kept putting it off, feature development didn't start until one week before the contest, and the contest page wasn't published until three days before — cutting it quite close.
+
+# About Sponsorship
+
+At SECCON, Flatt Security generously indicated they would be interested in sponsoring, but I decided to proceed without prize money, thinking that the logistics of payment were complicated and that not many teams would participate specifically for prize money.
+However, on reflection, while we might be somewhat well-known domestically given achievements like winning SECCON 14, from an international perspective, no one would expect much from a mysterious CTF with no prizes and a previous edition 12 years ago.
+
+# On CTF and AI
+
+AI's ability to solve CTF challenges has been rising rapidly lately, and conversations about "CTF is dying" have become increasingly common in my surroundings.
+Competitive programming seems to be finding a path forward by banning AI, but I think it's fundamentally impossible to get community-wide consensus on banning AI from CTF, given the nature of the competition.
+
+Several of the challenges I created this time — Yajilin in particular — were designed so that AI alone would almost certainly not be able to solve them, while humans alone would also find them quite difficult within 24 hours; the intended approach was to collaborate effectively with AI.
+That this challenge went unsolved (though I think part of the reason is simply that few players attempted it) may be evidence that "using AI skillfully" is difficult enough to constitute a meaningful competitive dimension.
+Within the next year or so, AI might be able to one-shot challenges at this level, but I believe that even then, there will still be a gap in output between blindly delegating to AI and truly leveraging it.
+Though I still don't quite understand concretely what "leveraging" means. Someone please tell me.
+
+Even if CTF's competitive aspect fades, the fun of CTF as content doesn't disappear. If anything, CTF as entertainment may have become more enjoyable, now that AI can explain anything.
+Daily AlpacaHack is precisely a format optimized for getting that entertainment value out of CTF, and I look forward to it every day. I hope to see more things like this.
+
+In any case, I intend to keep doing CTF for a while longer.
+
+# Challenges I Created
+
+I created 7 crypto challenges, 2 reversing challenges, 1 web challenge, 3 misc challenges, and 1 rev-misc challenge.
+For crypto, I tried to balance the selection from my accumulated stockpile, though I feel there were somewhat more oddly demanding challenges toward the end.
+I really wanted to include some harder, heavily mathematical challenges involving things like pairings, but my mathematical skills weren't up to it — I'll keep working on that.
+
+Below are write-ups for the challenges I created.

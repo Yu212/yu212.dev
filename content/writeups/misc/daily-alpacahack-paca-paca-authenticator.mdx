@@ -1,0 +1,107 @@
+---
+title: "Daily AlpacaHack - Paca Paca Authenticator"
+date: "2026/01/25"
+interest: 2
+difficulty: 1
+tags:
+  - crypto
+  - lcg
+---
+
+問題ソースコードは以下の通り。
+
+
+<details>
+<summary>問題ソースコード</summary>
+
+```python showLineNumbers
+from Crypto.Util.Padding import pad, unpad
+from Crypto.Cipher import AES
+import os
+import json
+
+aes_key = os.urandom(16)
+flag = os.environ.get("FLAG", "Alpaca{dummy}")
+
+def register(username, message):
+    data = json.dumps({"name": username, "message": message}).encode()
+    cipher = AES.new(aes_key, AES.MODE_CBC)
+    token = cipher.encrypt(pad(data, 16))
+    print("[debug]", cipher.iv.hex())
+    return token
+
+def login(iv, token):
+    data = unpad(AES.new(aes_key, AES.MODE_CBC, iv=iv).decrypt(token), 16)
+    data = json.loads(data)
+    return data["name"], data["message"]
+
+
+token = register("alpaca", "paca paca!")
+print("This is your login token:", token.hex())
+
+print("Oops! I forgot to save the iv, so I can't decrypt the token! Do you know it?")
+iv = bytes.fromhex(input("help me> "))
+
+try:
+    username, message = login(iv, token)
+except Exception as e:
+    print("something wrong:", e)
+    exit(1)
+
+if username == "alpaca":
+    print("paca paca!")
+    print("Thanks! That really helped!")
+elif username == "llama":
+    print("llama!?!!?", flag)
+    print("Oh no, I accidentally leaked the flag...")
+else:
+    print(f"{username}... who are you?")
+```
+
+</details>
+
+AESという共通鍵暗号を使った認証システムのコードです。
+`json.dumps({"name": "alpaca", "message": "paca paca!"}).encode()`
+をAES-CBCモードで暗号化してトークンとして返しています。
+それを`aes_key`とユーザーから与えられた`iv`を使って復号し、得られたjsonの`name`が`llama`であればフラグを返すようになっています。
+
+AES暗号（特に今回使われているAES128）は16byteの鍵と16byteの平文ブロックをもとに16byteの暗号文ブロックを生成する共通鍵暗号です。
+
+https://ja.wikipedia.org/wiki/%E6%9A%97%E5%8F%B7%E5%88%A9%E7%94%A8%E3%83%A2%E3%83%BC%E3%83%89
+
+今回は中でもCBCモード（Cipher Block Chaining mode）という動作モードが使われています。CBCモードでは、暗号化の際に各平文ブロックを前の暗号文ブロックとXORしたものを暗号化します。最初のブロックについては前の暗号文ブロックが存在しないため、IV（Initialization Vector）と呼ばれる値を使ってXORします。
+復号の際には、各暗号文ブロックを復号した後に、前の暗号文ブロック（最初のブロックについてはIV）とXORすることで平文ブロックを得ます。
+つまり、最初の暗号文ブロックは、最初の平文ブロックを$P_1$、IVを$IV$、最初の暗号文ブロックを$C1$とすると、以下のように復号されます。
+$P_1 = \mathrm{Dec}(C_1) \oplus IV$
+ここで、$\mathrm{Dec}(C_1)$はC1を復号した値を表します。
+IVが単純にXORされているため、例えばIVのあるビットを反転させると、復号後の平文ブロックの同じビットも反転します。
+今回の問題では、IVとしてユーザーから与えられた値を使っているかつ、元のIVが出力されているため、復号後の最初の平文ブロックを任意の値に書き換えることが可能です。
+$IV'$を自由に決められる場合、新しく復号結果としたい平文ブロックを$P_1'$として、
+$IV' = IV \oplus P_1 \oplus P_1'$
+と$IV$を決めれば、復号後の最初の平文ブロックを$\mathrm{Dec}(C_1) \oplus IV' = \mathrm{Dec}(C_1) \oplus (IV \oplus P_1 \oplus P_1') = P_1'$に変更できます。
+今回の問題は、jsonの`name`の値を`"alpaca"`から`"llama"`に変更したいという状況でした。
+`name`の値は最初のブロックの16byteに収まっているため、前述した最初のブロックを書き換える方法で達成できます。
+`{"name": "alpaca`から`{ "name": "llama`に変更すればよい（llamaのほうが一文字短いため、適当に空白をいれることによって16byteに揃えました）ので、新しいIVを以下のように計算します。
+`iv = xor(b"{\"name\": \"alpaca", b"{ \"name\": \"llama", original_iv)`
+これを実装したソルバは以下の通りです。pwntoolsのxor関数を使っています。
+
+```python showLineNumbers
+from pwn import *
+
+sc = remote(..., ...)
+sc.recvuntil(b"[debug] ")
+original_iv = bytes.fromhex(sc.recvline().decode())
+sc.recvuntil(b"token: ")
+token = bytes.fromhex(sc.recvline().decode())
+iv = xor(b"{\"name\": \"alpaca", b"{ \"name\": \"llama", original_iv)
+sc.sendlineafter(b"> ", iv.hex())
+print(sc.recvline())
+
+```
+
+
+このように、CBCモードのAES暗号では鍵を知らなくてもIVを書き換えることで復号結果を改竄できてしまいます。同様に、暗号文ブロックを書き換えることでも完全に任意ではありませんが復号結果を改竄できます。
+おまけとして、この性質を使った有名な攻撃手法としては、他にもpadding oracle attackなどがあります。
+
+ちなみに、フラグの元ネタはこれです。アルパカとラマは似てるけど、アルパカとオカピは別に似てません。
+https://www.youtube.com/watch?v=b4LbzldPOA0

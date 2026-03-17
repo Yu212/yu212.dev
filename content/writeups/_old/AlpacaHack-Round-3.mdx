@@ -1,0 +1,279 @@
+2024/9/15に開催されたAlpacaHack Round 3 (Crypto)のwriteupです。全完して6位でした。
+主に競技プログラミング界隈から来て最近CTFを始めたという方に向けて、CTF特有の考え方といった部分を丁寧めに書いてみます。
+
+[:contents]
+
+# qrime
+RSA暗号をベースにした問題ですが、$n$ の素因数 $p$ の生成方法が特殊です。
+$p = q \cdot \mathrm{nextPrime}(r) + \mathrm{nextPrime}(q) \cdot r$ として生成され、$n, e, c$ に追加で $r$ が与えられています。
+RSA暗号は $p$ または $q$ を求めることができてしまうと任意の暗号文を復号できます。
+この式と $n = pq$ の $2$ つの式を用いて $n$ の素因数 $p, q$ を求めることができないでしょうか。
+ここで、 $\mathrm{nextPrime}$ が数式として表しにくく邪魔なため、ある整数 $a, b$ を用いて $\mathrm{nextPrime}(q) = q + a, \mathrm{nextPrime}(r) = r + b$ と表すことを考えてみます。
+すると、$p$ に関する最初の式は $p = q (r + b) + (q + a) r$ となり、未知数が $2$ つ増えてしまう代わりに式として扱いやすくなります。((当たり前ですが重要なこととして、未知数は少ないほうが嬉しいです))
+では、式に出てくる値それぞれの大きさ(bit数)を考えてみましょう。$q, r$ はコードにある通り256ビットのランダムな値を取ります。$n$ が $766$ ビットであることから $p$ は $510$ ビットです。では $a, b$ はどうでしょうか。
+次のようなコードを実行すると、$a, b$ がどれくらいの大きさの値になるかわかります。
+
+```python showLineNumbers
+x = getRandomNBitInteger(256)
+print(nextPrime(x) - x)
+```
+何度か実行してみると、高々1000とかなり小さい値をとっています。((素数定理から言えますが、こういうのは色々実験して発見するほうが早いと思います)) $a, b$ 両方を十分高速に全探索できそうです。((この問題では $a, b$ 以外の値の大きさは重要ではありませんが、出てくるの値の大きさを考えるというのはCTFにおいてはかなり重要な考察です))
+ここまでをまとめると、$p, q$ を未知数として連立方程式
+$\begin{equation}
+\left\{ \,
+    \begin{aligned}
+    & n = p q \\
+    & p = q (r + b) + (q + a) r
+    \end{aligned}
+\right.
+\end{equation}
+$
+を解くことができればよいです。
+これを変形していくと $(2 r + b) q^2 + a r q - n = 0$ と、 $q$ に関する二次方程式が得られます。これを解くことで $q$ を求めることができました。
+
+### ソルバ
+```python showLineNumbers
+from Crypto.Util.number import long_to_bytes
+from math import isqrt
+
+n=200697881793620389197751143658858424075492240536004468937396825699483210280999214674828938407830171522000573896259413231953182108686782019862906633259090814783111593304404356927145683840948437835426703183742322171552269964159917779
+e=65537
+c=77163248552037496974551155836778067107086838375316358094323022740486805320709021643760063197513767812819672431278113945221579920669369599456818771428377647053211504958874209832487794913919451387978942636428157218259130156026601708
+r=30736331670163278077316573297195977299089049174626053101058657011068283335270
+
+def solve_rsa(p, q):
+    phi = (p - 1) * (q - 1)
+    d = pow(e, -1, phi)
+    m = pow(c, d, n)
+    return long_to_bytes(m)
+
+def solve():
+    for a in range(1000):
+        for b in range(1000):
+            aa = 2 * r + b
+            bb = a * r
+            cc = -n
+            q = (-bb + isqrt(bb * bb - 4 * aa * cc)) // (aa * 2)
+            if q > 0 and n % q == 0:
+                p = n // q
+                print(p, q)
+                print(solve_rsa(p, q))
+                return
+solve()
+```
+
+`Crypto.Util.number` は `pycryptodome` のモジュールです。この問題ではバイト列と整数の間の変換に使われていましたが、`pycryptodome` はこの問題に限らず多くの問題で使われます。
+
+### おまけ
+
+ちなみに、sagemathをうまく使うと、二つの式を求めた後人力で式変形をする必要なく簡単に解くことができます。二つの式の終結式を求めてそれを解かせています。（私はこちらの方法で解きました）
+
+```python showLineNumbers
+from sage.all import *
+
+PR = PolynomialRing(ZZ, ["p", "q"])
+p, q = PR.gens()
+for a in range(1000):
+    for b in range(1000):
+        f1 = n - p * q
+        f2 = q * (r + b) + (q + a) * r - p
+        rr = f1.resultant(f2).univariate_polynomial().roots()
+        if len(rr) > 0:
+            q = rr[0][0]
+            p = n // q
+            print(solve_rsa(p, q))
+```
+
+
+
+# Rainbow Sweet Alchemist
+RSA暗号をベースにした問題で、$n$ の素因数 $p, q$ の生成方法が特殊です。
+シードを固定した乱数生成器を用いていくつかの素数を生成した後、$1024/64=16$ 個の値を使って $p = 2 \prod_{i=0}^{15} \mathrm{factors}_i + 1$ のようにして $p, q$ を生成しています。
+`random.choice` はシードを固定した乱数生成器を使っていないため、同じコードを実行して $p, q$ を得るというのは不可能そうです。
+ここで、 $\varphi(n) = (p-1)(q-1) = 2 \prod_{i=0}^{15} \mathrm{factors}_i \cdot 2 \prod_{i=16}^{31} \mathrm{factors}_i$ の素因数としてあり得るものが全て求まることに注目します。実験してみると`getPrime`は多めに見積もっても $1000$ 回程度のループで答えを返すため、`deterministicGetPrime` が返す最初の $2000$ 個の値を手元で計算しておくと、 $\varphi(n)$ の素因数は $2^2$ とこのリストの中の値のみを含みます。
+つまり、$4$ とこのリストすべての値の積を $P$ と置くと、これは $\varphi(n)$ の倍数となります。この性質の何が嬉しいかというと、オイラーの定理より、$a$ を $n$ と互いに素な整数として $a^P \equiv 1 \pmod n$ が成り立ちます。
+このリストから素数を一つずつ消していくと、 $\varphi(n)$ の素因数 $r$ が消された場合にのみ $a^{P/r} \not\equiv 1 \pmod n$ となり、各素数が $p, q$ の生成に使われたかを判定することができます。
+逆に、リストに一つずつ素数を追加していき $a^P \equiv 1 \pmod n$ となったタイミングを調べていくという方法でも解くことができ、こちらのほうが高速です。
+
+考え方としてはポラードのp-1因数分解法に近く、このアルゴリズムを知っている人であれば早く思いつけるのかなと思います。
+
+### ソルバ
+```python showLineNumbers
+from Crypto.Util.number import long_to_bytes
+import random
+
+r = random.Random(0)
+def deterministicGetPrime():
+    while True:
+        if isPrime(p := r.getrandbits(64)):
+            return p
+
+def solve_rsa(p, q):
+    phi = (p - 1) * (q - 1)
+    d = pow(e, -1, phi)
+    m = pow(c, d, n)
+    return long_to_bytes(m)
+
+assert deterministicGetPrime() == 2710959347947821323
+
+ps = [deterministicGetPrime() for _ in range(2000)]
+factors = []
+while len(factors) < 16:
+    prd = 1
+    x = pow(2, 4, n)
+    for p in factors:
+        x = pow(x, p, n)
+    if x == 1:
+        break
+    for p in ps:
+        x = pow(x, p, n)
+        if x == 1:
+            factors.append(p)
+            break
+    print(factors)
+tmp = 1
+for p in factors:
+    tmp *= ps[i]
+p = tmp * 2 + 1
+q = n // p
+print(solve_rsa(p, q))
+```
+
+
+
+# A Dance of Add and Mul
+楕円曲線の問題です。
+いくつかの有名なパラメータの楕円曲線には名前がついており、問題コードに書いてある`BLS12-381`もその一つです((Cryptoに限らないCTF典型として、ソースコードに書かれているコメントは大体ヒントです))。検索してみるとペアリングの計算をする際によく用いられるとわかります。
+ペアリングについての説明は（私もあんまりよくわかっていないため）省略するので、[https://project-euphoria.dev/blog/36-pairing/:title=このページ] などを見てください。
+
+さて、隣接する $c$ について $\mathrm{xs}$ から共通の値を使っていることから、各 $c$ に対して $0$ か $1$ か求めるよりも、隣接する二つの $c$ について同じ値を取るかを求めるほうが見通しがよさそうです。
+$\mathrm{cs}_i$ と $G_1, G_2$ の間でペアリングの計算をすることを考えると、例として $i = 0, c = 0$ のとき $f(\mathrm{cs}_0, G_1) = f(x_1 G_1 + x_2 G_2, G_1) = f(G_1, G_1)^{x_1} f(G_2, G_1)^{x_2} = f(G_2, G_1)^{x_2}$ のようになります。
+更に、$i = 1, c = 1$ のときについて考えると $f(\mathrm{cs}_1, G_1) = f(x_3 G_1 + x_2 G_2, G_1) = f(G_1, G_1)^{x_3} f(G_2, G_1)^{x_2} = f(G_2, G_1)^{x_2}$ のようになり、先ほどの結果と一致します。
+このことから、$G_1$ とのペアリングを計算した結果が隣接する二つの $\mathrm{cs}$ で一致した場合、その二つの $c$ の値は異なることが分かります。 $G_2$ とのペアリングを計算した結果についても同様です。
+これと一つ目の $c$ が $0$ であることから、すべての $c$ の値を求めることができます。
+上述のサイトでは $\mathbb{F}_{p^{12}}$ に拡大した体を用いていましたが、この問題では $\mathbb{F}_{p}$ で十分なようです。
+
+### ソルバ
+```python showLineNumbers
+from pwn import *
+
+cs = eval(read("a-dance-of-add-and-mul/chall.txt").decode())
+
+p = 0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab
+K = GF(p)
+E = EllipticCurve(K, (0, 4))
+cs = [E(x, y) for x, y in cs]
+
+G1, G2 = E.gens()
+o1, o2 = G1.order(), G2.order()
+
+r = 0x5f19672fdf76ce50d28e776116d47d5841f8c5f1fba8d33881bfa40089fc5bffd1ffffff00010001
+A1 = [c.weil_pairing(G1, r) for c in cs]
+A2 = [c.weil_pairing(G2, r) for c in cs]
+
+v = 0
+vs = []
+for i in range(len(A1) - 1):
+    vs.append(v)
+    if A1[i] == A1[i+1] or A2[i] == A2[i+1]:
+        v = 1 - v
+vs.append(v)
+print(unbits(vs))
+```
+
+`read`や`unbits`は`pwntools`にある関数で、それぞれバイト列としてファイルを読む関数とビットのリストをバイト列に変換する関数です。`pwntools`には他にもいくつか便利な関数があるのでリファレンスに目を通しておくと便利かもしれません。
+
+
+
+# Hat Trick
+三つのRollingHashについてハッシュが特定の値を取るような長さ54以下の英小文字列を求める問題です。
+
+まずは与えられた条件から使えそうな式を立てていきます。
+使う文字数については多いほうが考えられる状態が広く条件を満たすように値を取りやすくなるため、とりあえず最大の54文字を決め打ちで考えていきましょう。
+$s_i$ は英小文字であることから、$97 \leq s_i \leq 122　(0 \leq i < 54)$ です。
+更にRollingHashの式を考えると、$\sum_{i=0}^{53} s_i \mathrm{base}^i \equiv \mathrm{target}_j \pmod {p_j}$ というような式が $3$ つ立ちます。
+一度ずつしか登場しない値 $p_j$ が法として使われているのはあまりうれしくないので、未知の整数 $k_j$ を用いて $\sum_{i=0}^{53} s_i \mathrm{base}^i \equiv \mathrm{target}_j + k_j p_j$ というように変形します。
+ここで、$s_i (0 \leq i < 54)$ が未知の値で、他に出てくる値はすべて既知です。よって、すべての条件は線形な式で表されています。((未知数に関する二次式は条件
+としてかなり扱いにくく、線形だと結構うれしいことが多いです。そういう場合はCoppersmith's Methodとかを持ち出したりすることもあります))
+
+未知数がとる値の範囲が他の値と比べて小さい、出てくる式が線形である、といった点から、LLLを使って解くことができそうだとあたりを付けることができます。
+
+LLLはCTFにおいてかなり頻出のアルゴリズムで、競技プログラマであれば使うのはそれほど難しくないため、早めに慣れておくと便利かなと思います。((アルゴリズム自体の理論や証明は難しめです))
+LLLについて非常に雑に説明すると、行列 $M$ に対し、行ベクトル $a$ を $b = a M$　のノルムが"いい感じに小さく"なるようにとったときの $b$ の値を求めることができます。
+（LLL自体の説明ではなく、LLLを使ってできることについての説明。詳しい説明については他の記事を参照してください。）
+
+計算量は重めの多項式時間で、行列のサイズが $200 \times 200$ くらいまでなら動くと思っておけばいいと思います。
+問題に"いい感じに小さい"値が出てきたときは、その値が右辺に来るような線型方程式をうまく立てることによってLLLで解ける形に持っていくことができることが多いです。
+
+それでは、LLLに使う式を立てていきます。
+
+RollingHashの式はそのまま使って $\sum_{i=0}^{53} s_i \mathrm{base}^i - \mathrm{target}_j - k_j p_j = 0$ です。
+更に、$s_i$ は値域の中心である $\lfloor (97+122)/2 \rfloor = 109$ に近い値を取ってほしい、つまり $s_i - 109 $ が小さい値になってほしいです。次のような行列を立てます。
+
+$M = 
+\begin{pmatrix}
+1   &        &     & B \cdot \mathrm{base}_0^0    & B \cdot \mathrm{base}_1^0    & B \cdot \mathrm{base}_2^0    &   \\
+    & \ddots &     & \vdots                      & \vdots                        & \vdots                       &   \\
+    &        & 1   & B \cdot \mathrm{base}_0^{53} & B \cdot \mathrm{base}_1^{53} & B \cdot \mathrm{base}_2^{53} &   \\
+    &        &     & B \cdot p_0                  &                              &                              &   \\
+    &        &     &                              & B \cdot p_1                  &                              &   \\
+    &        &     &                              &                              & B \cdot p_2                  &   \\
+109 & 109    & 109 & B \cdot \mathrm{target}_0    & B \cdot \mathrm{target}_1    & B \cdot \mathrm{target}_2    & 1 \\
+\end{pmatrix} \\
+a = 
+\begin{pmatrix}
+s_0 & \cdots & s_{53} & k_0 & k_1 & k_2 & -1
+\end{pmatrix}, \\
+b =
+\begin{pmatrix}
+s_0-109 & \cdots & s_{53}-109 & 0 & 0 & 0 & -1
+\end{pmatrix}
+$
+$M$ に左から$a$ を掛けるとノルムの小さいベクトル $b$ になるため、LLLの出力には $b$ が現れることが期待できます。LLLは実際には行ベクトルではなく行列を出力としていて、各行が $b$ としてありうるノルムの小さいベクトルとなっています。それぞれの行を見て $s_i$ の値域が条件を満たさないものなどを除くと解が得られます。
+LLLではベクトルの各要素が同程度の大きさ(bit数)の値になるように重みを調節することが大切です。$55$から$57$列目には$0$が出てきてほしいため、他の列より小さくなるよう $B = 128$ 倍しています（特に$128$という数字に意味があるわけではありません）。
+LLLはsagemathのライブラリを使うのが簡単です。
+
+### ソルバ
+```python showLineNumbers
+from sage.all import *
+from pwn import *
+import json
+
+so = remote("xxx.xxx.xxx.xxx", 0)
+params = json.loads(so.recvline().removeprefix(b"params: "))
+for _ in range(3):
+    target_hash = json.loads(so.recvline().removeprefix(b"target: "))
+    print(target_hash)
+
+    MAX_LEN = 54
+    B = 128
+    M = Matrix(ZZ, MAX_LEN+4, MAX_LEN+4)
+    for i in range(MAX_LEN):
+        M[i, i] = 1
+        M[MAX_LEN+3, i] = 109
+        M[i, MAX_LEN+0] = pow(params[0]["base"], i, params[0]["p"]) * B
+        M[i, MAX_LEN+1] = pow(params[1]["base"], i, params[1]["p"]) * B
+        M[i, MAX_LEN+2] = pow(params[2]["base"], i, params[2]["p"]) * B
+    M[MAX_LEN+0,MAX_LEN+0] = params[0]["p"] * B
+    M[MAX_LEN+1,MAX_LEN+1] = params[1]["p"] * B
+    M[MAX_LEN+2,MAX_LEN+2] = params[2]["p"] * B
+    M[MAX_LEN+3,MAX_LEN+0] = target_hash[0] * B
+    M[MAX_LEN+3,MAX_LEN+1] = target_hash[1] * B
+    M[MAX_LEN+3,MAX_LEN+2] = target_hash[2] * B
+    M[MAX_LEN+3,MAX_LEN+3] = 1
+
+    M = M.LLL()
+    for row in M:
+        if row[-1] != -1:
+            continue
+        s = [chr(ch + 109) for ch in row[:MAX_LEN]]
+        if not ('a' <= min(s) and max(s) <= 'z'):
+            continue
+        if list(row[MAX_LEN:-1]) != [0, 0, 0]:
+            continue
+        s = "".join(s)
+        print(s)
+        so.sendlineafter(b"> ", s.encode())
+        break
+print(so.recvline())
+```
