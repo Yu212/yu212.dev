@@ -92,7 +92,7 @@ export default async function WriteupPage({ params }: { params: { contest: strin
   }));
 
   return (
-    <div className="text-black bg-gray-100 min-h-screen flex flex-col items-center">
+    <div className="text-black bg-gray-100 min-h-screen flex flex-col items-center overflow-x-clip">
       <WriteupHeader />
       <main className="flex-grow w-full">
         <div className="max-w-6xl mx-auto px-4 py-10">
