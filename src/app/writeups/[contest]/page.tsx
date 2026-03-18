@@ -8,6 +8,7 @@ import Link from "next/link";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowLeft } from "@fortawesome/free-solid-svg-icons";
 import WriteupContent from "@/components/writeup/writeup-content";
+import WriteupTocMobile from "@/components/writeup/writeup-toc-mobile";
 
 type ChallengeGroup = {
   category: string;
@@ -137,7 +138,7 @@ export default async function WriteupPage({ params }: { params: { contest: strin
                       {group.items.map((challenge) => {
                         const enChallenge = enByName.get(challenge.name);
                         return (
-                          <section key={challenge.anchor} id={challenge.anchor} className="bg-white border border-gray-200 rounded-lg p-6">
+                          <section key={challenge.anchor} id={challenge.anchor} className="bg-white border border-gray-200 rounded-lg p-4">
                             <div className={hasEn ? "lang-ja" : ""}>
                               <div className="text-xs uppercase tracking-wide text-gray-500">{challenge.categories.join(" & ")}</div>
                               <h2 className="text-2xl font-semibold mt-1">
@@ -171,6 +172,7 @@ export default async function WriteupPage({ params }: { params: { contest: strin
           </div>
         </div>
       </main>
+      {challenges.length > 0 && <WriteupTocMobile groups={tocGroups} />}
     </div>
   );
 }
