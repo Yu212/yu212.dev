@@ -110,12 +110,12 @@ Enumerating solutions for each reveals that the two black cell positions in the 
 In each lane, the path meanders horizontally while extending downward. This meandering has two "phases" determined by the input bit:
 
 ```
-v[x]┏ ┓ ┏ ┓    v ┏ ┓ ┏ ━ ┓
-┏ ━ ┛ ┗ ┛ ┃    ┏ ┛ ┗ ┛ ┏ ┛
-┃ v ^ ^ ┏ ┛    ┃ v ^ ^ ┗ ┓
-┃ v ^ ^ ┗ ┓    ┃ v ^ ^ ┏ ┛
-┃ v ^ ^ ┏ ┛    ┃ v ^ ^ ┗ ┓
-┃ v ^ ^ ┗ ┓    ┃ v ^ ^ ┏ ┛
+v[x]┏ ┓ ┏ ┓  |  v ┏ ┓ ┏ ━ ┓
+┏ ━ ┛ ┗ ┛ ┃  |  ┏ ┛ ┗ ┛ ┏ ┛
+┃ v ^ ^ ┏ ┛  |  ┃ v ^ ^ ┗ ┓
+┃ v ^ ^ ┗ ┓  |  ┃ v ^ ^ ┏ ┛
+┃ v ^ ^ ┏ ┛  |  ┃ v ^ ^ ┗ ┓
+┃ v ^ ^ ┗ ┓  |  ┃ v ^ ^ ┏ ┛
 ```
 
 The input bit 0 or 1 changes the path near the top row, and the part continuing below starts with the meander phase shifted. This phase is preserved as it propagates to the bottom row.
@@ -125,16 +125,16 @@ The input bit 0 or 1 changes the path near the top row, and the part continuing 
 The read-out gadget described above is placed overlapping the source lane, and is constructed so that different positions become black cells depending on the phase.
 
 ```
-v ^ ^ ┏ ┛ v v    v ^ ^ ┗ ┓ v v
-v ^ ^ ┗ ┓ v v    v ^ ^ ┏ ┛ v v
-v ^ ┏ ┓ ┃ v v    v ^[x]┗ ┓ v v
-v ┏ ┛ ┗ ┛ v v    v ┏ ━ ━ ┛ v v
-v ┃[x]v v v v    v ┗ ┓ v v v v
-v ┗ ┓ v v v v    v ┏ ┛ v v v v
-v ┏ ┛ ┏ ┓ < v    v ┃ ┏ ━ ┓ < v
-v ┗ ━ ┛ ┃ v v    v ┗ ┛ ┏ ┛ v v
-v ^ ^ ┏ ┛ v v    v ^ ^ ┗ ┓ v v
-v ^ ^ ┗ ┓ v v    v ^ ^ ┏ ┛ v v
+v ^ ^ ┏ ┛ v v  |  v ^ ^ ┗ ┓ v v
+v ^ ^ ┗ ┓ v v  |  v ^ ^ ┏ ┛ v v
+v ^ ┏ ┓ ┃ v v  |  v ^[x]┗ ┓ v v
+v ┏ ┛ ┗ ┛ v v  |  v ┏ ━ ━ ┛ v v
+v ┃[x]v v v v  |  v ┗ ┓ v v v v
+v ┗ ┓ v v v v  |  v ┏ ┛ v v v v
+v ┏ ┛ ┏ ┓ < v  |  v ┃ ┏ ━ ┓ < v
+v ┗ ━ ┛ ┃ v v  |  v ┗ ┛ ┏ ┛ v v
+v ^ ^ ┏ ┛ v v  |  v ^ ^ ┗ ┓ v v
+v ^ ^ ┗ ┓ v v  |  v ^ ^ ┏ ┛ v v
 ```
 
 Whether this black cell is placed before `<1` in the AND/XOR gadget determines the input bit to the gate, and the combination determines the subsequent phase of the lane containing the gate.
@@ -154,13 +154,13 @@ When analyzing the board, read these two separately and XOR them to recover the 
 The value ultimately evaluated is the output of the rightmost lane. The last row of the last lane is as follows, and this is only satisfiable when the lane output is 1:
 
 ```
-^0 ^0       v0 v0 v0 ^0
->1          v0
-^0          v0
-^0       v0 >0
-^0 v0                v0
-^0 v0 v0 v0 v0 v0    v0
-                     v0
+^0 ^0       v0 v0 v0 ^0  |  ^ ^ ┗ ┓ v v v ^
+>1          v0           |  > ┏ ┓ ┃ v ┏ ┓[x]
+^0          v0           |  ^ ┃ ┗ ┛ v ┃ ┗ ┓
+^0       v0 >0          -->  ^ ┗ ┓ v > ┃ ┏ ┛
+^0 v0                v0  |  ^ v ┗ ━ ━ ┛ ┃ v
+^0 v0 v0 v0 v0 v0    v0  |  ^ v v v v v ┃ v
+                     v0  |  ━ ━ ━ ━ ━ ━ ┛ v
 ```
 
 From this analysis, the entire board can be parsed as a circuit. Since the input is 16 bits, you can calculate the output for all $2^{16}$ possible inputs, or use a solver like z3 to find the input that makes the output 1. The solution is `1100000110110101`.
