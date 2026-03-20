@@ -285,7 +285,7 @@ async function validateWriteups() {
   const miscEntries = await readDirSafe(miscRoot);
   if (miscEntries) {
     for (const entry of miscEntries) {
-      if (!entry.isFile() || !entry.name.endsWith(".mdx")) continue;
+      if (!entry.isFile() || !entry.name.endsWith(".mdx") || entry.name.startsWith("_")) continue;
       const miscPath = path.join(miscRoot, entry.name);
       const source = await readFileSafe(miscPath);
       if (!source) {
@@ -382,7 +382,7 @@ async function buildMisc() {
   if (!entries) return miscSlugs;
 
   for (const entry of entries) {
-    if (!entry.isFile() || !entry.name.endsWith(".mdx")) continue;
+    if (!entry.isFile() || !entry.name.endsWith(".mdx") || entry.name.startsWith("_")) continue;
     const slug = entry.name.replace(/\.mdx$/, "");
     const source = await fs.readFile(path.join(miscRoot, entry.name), "utf8");
     const { data, content } = matter(source);

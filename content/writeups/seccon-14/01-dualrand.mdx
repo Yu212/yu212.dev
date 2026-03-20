@@ -1,0 +1,292 @@
+---
+title: "dualrand"
+categories: ["crypto"]
+---
+# 問題
+
+<details>
+<summary>問題文（クリックで展開）</summary>
+```python showLineNumbers
+#!/usr/bin/env python3
+
+import random
+
+r1 = random.SystemRandom()
+r2 = random.Random(int(input('seed: ')))
+
+ans = [r1.randint(0, 0xdeadbeef) for _ in range(80)]
+key = [r2.randint(0, 0xdeadbeef) for _ in range(80)]
+r1.shuffle(key)
+
+print("hint:", [a ^ b for a, b in zip(ans, key)])
+if list(map(int, input('answer: ').split(','))) == ans:
+    print("flag:", open("flag.txt", "r").read())
+else:
+    print("nope.")
+```
+</details>
+
+# 解法
+
+最初の80個の出力が0になるようなseedを見つけることができれば、他の要素は無視して`hint`をそのまま`answer`として入力することでフラグが得られる。
+ただし、`int_max_str_digits`に引っかかるため、$10^{4300}$未満のseedしか入力できない。
+
+## `random.seed` の内部動作
+
+`random.seed`は、与えられた`seed`をもとに、`init_by_array`関数を使って以下のようにして内部状態を初期化する。
+
+`init_by_array`は以下のようになっている。
+
+```python showLineNumbers
+def seed_num_to_array(num):
+    b = []
+    while num > 0:
+        b.append(num & 0xffffffff)
+        num >>= 32
+    return b
+
+def init_by_array(init_key):
+    mt = [0] * 624
+    mt[0] = 19650218
+    for i in range(1, 624):
+        mt[i] = (0x6c078965 * (mt[i-1] ^ (mt[i-1] >> 30)) + i) & 0xffffffff
+    i = 1
+    j = 0
+    for _ in range(max(624, len(init_key))):
+        mt[i] = ((mt[i] ^ (mt[i-1] ^ (mt[i-1] >> 30)) * 1664525) + init_key[j] + j) & 0xffffffff
+        i += 1
+        j += 1
+        if i >= 624:
+            mt[0] = mt[623]
+            i = 1
+        if j >= len(init_key):
+            j = 0
+    for _ in range(623):
+        mt[i] = (mt[i] ^ ((mt[i-1] ^ (mt[i-1] >> 30)) * 1566083941)) - i & 0xffffffff
+        i += 1
+        if i >= 624:
+            mt[0] = mt[623]
+            i = 1
+    mt[0] = 0x80000000
+    return mt
+
+def random_seed(seed):
+    init_key = seed_num_to_array(seed)
+    mt = init_by_array(init_key)
+    return mt
+```
+
+`seed`を`init_by_array`の第2ループで`init_key[j] + j`として使われる624個の値からなる配列とする。`init_key`の長さが624未満であればループする。
+
+この`seed`配列は、`init_by_array`直後の内部状態`state`から以下のように逆算できる（ただし、これは一意に定まるわけではない）。
+
+```python showLineNumbers
+MASK = 0xffffffff
+
+f = lambda x: (x ^ (x >> 30)) * 0x19660d
+g = lambda x: (x ^ (x >> 30)) * 0x5d588b65
+h = lambda x: (x >> 1) ^ ((x & 1) * 0x9908b0df)
+
+MT = [0] * 624
+MT[0] = 19650218
+for i in range(1, 624):
+    MT[i] = (0x6c078965 * (MT[i - 1] ^ (MT[i - 1] >> 30)) + i) & MASK
+
+def ith_seed(state, i):
+    if i == 0:
+        return -(MT[1] ^ f(MT[0])) & MASK
+    if i == 1:
+        a = ((state[1] + 1) ^ g(state[623])) & MASK
+        b = ((state[2] + 2) ^ g(a)) & MASK
+        return (b - MT[2]) & MASK
+    if i == 2:
+        a = ((state[1] + 1) ^ g(state[623])) & MASK
+        b = ((state[2] + 2) ^ g(a)) & MASK
+        c = ((state[3] + 3) ^ g(state[2])) & MASK
+        return (c - (MT[3] ^ f(b))) & MASK
+    if 3 <= i <= 622:
+        p = ((state[i] + i) ^ g(state[i-1])) & MASK
+        q = ((state[i+1] + i+1) ^ g(state[i])) & MASK
+        return (q - (MT[i+1] ^ f(p))) & MASK
+    if i == 623:
+        a = ((state[1] + 1) ^ g(state[623])) & MASK
+        z = ((state[623] + 623) ^ g(state[622])) & MASK
+        return (a - f(z)) & MASK
+```
+
+`int_max_str_digits`の制限のため、`init_key`の長さは446以下である必要がある。ここでは長さを$K=313$とする（他の長さでも解けるが簡単のため）
+
+`state`に関する条件を整理する。`twist`した後の列の最初の80個の値が0である必要があることと、`seed`がループする必要があることの2つを式として表すと、
+$$	
+\begin{cases}
+\mathrm{state}[0] = \texttt{0x80000000} & & \cdots (1) \\
+\mathrm{ith\_seed}(\mathrm{state}, i) = \mathrm{ith\_seed}(\mathrm{state}, i+313) & (0 \leq i < 311) & \cdots (2) \\
+\mathrm{state}[i+397] \oplus h((\mathrm{state}[i] \mathbin{\&} \texttt{0x80000000}) \mid (\mathrm{state}[i+1] \mathbin{\&} \texttt{0x7fffffff})) = 0 & (0 \leq i < 80) & \cdots (3)
+\end{cases}
+$$
+
+の3つを満たせばよい（前述の通り`state`から`seed`は一意に決まらないため、これは必要条件より少し強い条件を言っている）。
+
+以下の順番で`state`を決めていく。
+
+1. `state[0:86]`と`state[477:624]`を決める
+2. $(3)$を満たすように`state[397:477]`を決める
+3. $(2)$を満たすように`state[312:397]`を決める
+4. $(2)$を満たすように`state[86:312]`を決める
+
+## 1. `state[0:86]`と`state[477:624]`を決める
+
+まず
+
+```python showLineNumbers
+state[0] = 0x80000000
+state[1:86] = [0] * 85
+state[477:624] = [0] * 147
+```
+とする。
+この後に他の値を適切に計算することによってすべての条件を満たすことができるため、`state[1:86]`と`state[477:624]`は任意の値にしてよい。
+
+## 2. 出力条件から `state[397:477]` を埋める
+
+`state[0:81]`が確定しているため、$(3)$から、
+$$
+\mathrm{state}[i+397]
+= h((\mathrm{state}[i] \mathbin{\&} \texttt{0x80000000}) \mid (\mathrm{state}[i+1] \mathbin{\&} \texttt{0x7fffffff}))
+\qquad (0 \le i < 80)
+$$
+がそのまま計算できる。
+
+## 3. 周期条件を後ろ向きに使って `state[312:397]` を埋める
+
+`ith_seed(state, i)`の通常ケース（$3 \leq i \leq 622$）は、`state[i-1], state[i], state[i+1]`の3語だけで決まる。
+したがって、`state[i+1], state[i+2]`と目標値`ith_seed(state, i+1)`が分かっていれば、逆向きに`state[i]`を1つずつ復元できる。
+
+`state[0:86]`が確定しているため、$\mathrm{ith\_seed}(\mathrm{state}, i+1) = \mathrm{ith\_seed}(\mathrm{state}, i-312) \quad (312 \leq i < 397)$の条件から`ith_seed(state, i+1)`もすでに確定している。
+
+以下のようにして計算できる。
+
+```python showLineNumbers
+def f_inv(x):
+    x = (x * pow(0x19660d, -1, 0x100000000)) & MASK
+    return x ^ (x >> 30)
+def g_inv(x):
+    x = (x * pow(0x5d588b65, -1, 0x100000000)) & MASK
+    return x ^ (x >> 30)
+def seed_prev(t1, s1, s2, i):
+    q = ((s2 + i+1) ^ g(s1)) & MASK
+    p = f_inv(((q - t1) & MASK) ^ MT[i+1])
+    return g_inv((p ^ (s1 + i)) & MASK)
+for i in reversed(range(312, 397)):
+    key = ith_seed(state, i-312)
+    state[i] = seed_prev(key, state[i+1], state[i+2], i+1)
+```
+
+逆順に計算すると、毎回必要な`state[i+1], state[i+2]`が既知なので、一つずつ`state[312:397]`を求めることができる。
+
+## 4. 周期条件を前向きに使って `state[86:312]` を埋める
+
+3と同様に、次は`state[i-2], state[i-1]`と目標値`ith_seed(state, i-1)`から`state[i]`を求める。
+
+`state[397:624]`と`state[1]`が確定しているため、
+$\mathrm{ith\_seed}(\mathrm{state}, i-1) = \mathrm{ith\_seed}(\mathrm{state}, i+312) \quad (86 \leq i < 312)$の条件から`ith_seed(state, i-1)`もすでに確定している。
+
+以下のようにして計算できる。
+
+```python showLineNumbers
+def seed_next(t1, s0, s1, i):
+    p = ((s1 + i) ^ g(s0)) & MASK
+    q = (t1 + (MT[i+1] ^ f(p))) & MASK
+    return ((q ^ g(s1)) - (i+1)) & MASK
+for i in range(86, 312):
+    key = ith_seed(state, i+312)
+    state[i] = seed_next(key, state[i-2], state[i-1], i-1)
+```
+
+前から順に計算すると、毎回必要な`state[i-2], state[i-1]`が既知なので、`state[86:312]`までを埋めることができる。
+
+## seed の再構成
+
+以上で`state`がすべて決まるので、`ith_seed(state, i)`から`init_key[i]`を取り出して実際に`random.seed`に渡すseedを計算する。
+
+```python showLineNumbers
+seed = 0
+for i in range(313):
+    x = ith_seed(state, i) - i
+    seed += x << (32 * i)
+```
+
+得られるseedは10進3016桁で、`int_max_str_digits`の制限に収まる。
+
+この値で`random.seed`すると、最初の80個の`getrandbits(32)`がすべて0になる。したがって`key`も80個とも0で、`hint = ans ^ key`はそのまま`ans`になり、`hint`を`answer`として返せばフラグが得られる。
+
+
+<details>
+<summary>ソルバ（クリックで展開）</summary>
+```python showLineNumbers
+MASK = 0xffffffff
+
+f = lambda x: (x ^ (x >> 30)) * 0x19660d
+g = lambda x: (x ^ (x >> 30)) * 0x5d588b65
+h = lambda x: (x >> 1) ^ ((x & 1) * 0x9908b0df)
+
+MT = [0] * 624
+MT[0] = 19650218
+for i in range(1, 624):
+    MT[i] = (0x6c078965 * (MT[i - 1] ^ (MT[i - 1] >> 30)) + i) & MASK
+
+def ith_seed(state, i):
+    if i == 0:
+        return -(MT[1] ^ f(MT[0])) & MASK
+    if i == 1:
+        a = ((state[1] + 1) ^ g(state[623])) & MASK
+        b = ((state[2] + 2) ^ g(a)) & MASK
+        return (b - MT[2]) & MASK
+    if i == 2:
+        a = ((state[1] + 1) ^ g(state[623])) & MASK
+        b = ((state[2] + 2) ^ g(a)) & MASK
+        c = ((state[3] + 3) ^ g(state[2])) & MASK
+        return (c - (MT[3] ^ f(b))) & MASK
+    if 3 <= i <= 622:
+        p = ((state[i] + i) ^ g(state[i-1])) & MASK
+        q = ((state[i+1] + i+1) ^ g(state[i])) & MASK
+        return (q - (MT[i+1] ^ f(p))) & MASK
+    if i == 623:
+        a = ((state[1] + 1) ^ g(state[623])) & MASK
+        z = ((state[623] + 623) ^ g(state[622])) & MASK
+        return (a - f(z)) & MASK
+
+def f_inv(x):
+    x = (x * pow(0x19660d, -1, 0x100000000)) & MASK
+    return x ^ (x >> 30)
+def g_inv(x):
+    x = (x * pow(0x5d588b65, -1, 0x100000000)) & MASK
+    return x ^ (x >> 30)
+def seed_next(t1, s0, s1, i):
+    p = ((s1 + i) ^ g(s0)) & MASK
+    q = (t1 + (MT[i+1] ^ f(p))) & MASK
+    return ((q ^ g(s1)) - (i+1)) & MASK
+def seed_prev(t1, s1, s2, i):
+    q = ((s2 + i+1) ^ g(s1)) & MASK
+    p = f_inv(((q - t1) & MASK) ^ MT[i+1])
+    return g_inv((p ^ (s1 + i)) & MASK)
+
+state = [0] * 624
+state[0] = 0x80000000
+for i in range(397, 477):
+    state[i] = h((state[i-397] & 0x80000000) | (state[i-396] & 0x7fffffff))
+for i in reversed(range(312, 397)):
+    key = ith_seed(state, i-312)
+    state[i] = seed_prev(key, state[i+1], state[i+2], i+1)
+for i in range(86, 312):
+    key = ith_seed(state, i+312)
+    state[i] = seed_next(key, state[i-2], state[i-1], i-1)
+
+seed = 0
+for i in range(313):
+    x = ith_seed(state, i) - i
+    seed += x << (32 * i)
+
+random.seed(seed)
+assert all(random.getrandbits(32) == 0 for _ in range(80))
+```
+</details>

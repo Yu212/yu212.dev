@@ -1,0 +1,101 @@
+---
+title: "monologue"
+categories: ["crypto"]
+---
+# 問題
+<details>
+<summary>問題文（クリックで展開）</summary>
+```python showLineNumbers
+def main():
+    k = KeyGenerator.KeyPair(gen=True)
+
+    while True:
+
+        choice = input("1. sign\n2. verify\n3. public key\n4. challenge\n> ")
+        if choice == "1":
+            m = bytes.fromhex(input("message(hex) > "))
+            print(sign(k, m).encode().hex())
+        elif choice == "2":
+            m = bytes.fromhex(input("message(hex) > "))
+            sig = bytes.fromhex(input("signature(hex) > ")).decode()
+            print(verify(k, m, sig))
+        elif choice == "3":
+            print(public_key(k).encode().hex())
+        elif choice == "4":
+            challenge(k)
+            exit()
+        else:
+            print("invalid choice")
+            exit()
+```
+</details>
+
+# 解法
+
+`import_signature`は以下のように実装されている。$s$の次数のチェックなどもなく任意の$r$と$s$を受け入れている。
+```python showLineNumbers
+def import_signature(sig: str):
+    """
+    Import the signature from a string.
+    """
+    c = 0
+    while sig[c] != '\n':
+        c += 1
+    c += 1
+    coeff = []
+    nb = ""
+    while sig[c] != '\n':
+        if sig[c] == "|":
+            coeff += [int(nb)]
+            nb = ""
+        else:
+            nb += sig[c]
+        c += 1
+    coeff += [int(nb)]
+    s = Polynomial(N=len(coeff))
+    s.coeff = np.array(coeff)
+    nb = ""
+    c += 3
+    while sig[c] != '\n':
+        nb += sig[c]
+        c += 1
+    r = int(nb)
+
+    return r, s
+```
+
+署名の検証は以下のように実装されている。
+
+```python showLineNumbers
+def NTRUNorm(P, Q, mod=(0, 0)):
+    """
+    Definition of the Centered
+    Euclidean Norm
+    """
+    Pc, Qc = P.coeff, Q.coeff
+    if mod[0] != 0 and mod[0]:
+        q = abs(mod[0])
+        Pc = Pc % q
+    if mod[1] != 0 and mod[1]:
+        q = abs(mod[1])
+        Qc = Qc % q
+    res_p = np.sqrt(np.sum(np.square(Pc)) - np.square(np.sum(Pc))/len(Pc))
+    res_q = np.sqrt(np.sum(np.square(Qc)) - np.square(np.sum(Qc))/len(Qc))
+    return np.sqrt(res_p**2 + res_q**2)
+
+def Verifying(D, r, s, N_bound, k: KeyPair):
+    """
+    Verify if the document D was signed by the
+    key k and boundary N_bound.
+    """
+    m = H(D+r.to_bytes(10, 'big'), k.N)
+    b = NTRUNorm(s, s.star_multiply(k.pub) - m, (0, k.q))
+    if b < N_bound:
+        return True
+    return False
+```
+
+$s$として次数0の多項式$128$を与えると、`Pc`は`[128]`に、`Qc`は`s.star_multiply(k.pub)`の部分は`% q`で消えて`-m`となる。
+`m`は`D`と`r`から計算されたsha1ハッシュのhexを整数に変換したもので、各係数は$[48,57] \cup [97,102]$という狭い範囲に含まれる。
+
+このことから、`NTRUNorm`で計算される値は非常に小さくなり、実際に実験すると$400$程度と`N_bound`より小さくなる。よって、`\n128\n\n\n0\n`をhexにした値、`0a3132380a0a0a300a`をchallengeに投げるとフラグが得られる。

@@ -1,0 +1,111 @@
+---
+title: "back2back"
+categories: ["crypto"]
+---
+# 問題
+
+<details>
+<summary>問題文（クリックで展開）</summary>
+```python showLineNumbers
+def chall():
+    params = Params(l_primes, l_exps, q_primes, q_exps, g0, g1, f)
+
+    alice = User(params, role='alice')
+    alice_pk = alice.keygen()
+    bob = User(params, role='bob')
+    bob_pk = bob.keygen()
+    print(alice_pk)
+    print(bob_pk)
+
+    tmp = sha256(str(alice._sk).encode()).digest()
+    key = tmp[:16]
+    iv = tmp[16:]
+    print(f"enc: {AES.new(key, AES.MODE_CBC, iv=iv).encrypt(pad(FLAG, AES.block_size)).hex()}")
+
+
+
+    while True:
+        bob_pk_list_R = ast.literal_eval(input("bob pk list R: "))
+        bob_pk_list_S = ast.literal_eval(input("bob pk list S: "))
+
+        bob_pk_R = (bob_pk_list_R[1] * params.i + bob_pk_list_R[0], bob_pk_list_R[3] * params.i + bob_pk_list_R[2])
+        bob_pk_S = (bob_pk_list_S[1] * params.i + bob_pk_list_S[0], bob_pk_list_S[3] * params.i + bob_pk_list_S[2])
+
+        bob_pk = PublicKey(bob_pk.E, bob_pk.E(bob_pk_R), bob_pk.E(bob_pk_S))
+        shared = alice.shared_key(bob_pk)
+        print(shared)
+```
+</details>
+
+入力した$R$, $S$に対して$E/\langle m R + n S \rangle$の$j$-不変量が何度でも得られ、$(m, n)$を求められるとフラグが得られる。
+
+# 解法
+
+kernelが定数倍されても終域は同じなので、$m R + n S$ではなく$R + n m^{-1} S$だと思うことができる。
+
+$R$, $S$として$k$-torsionとなる点を入力すると、終域の候補は$k$通り程度まで絞られ、手元で全探索して$j$-不変量が一致するものを選ぶことによって$R + n m^{-1} S$、つまり$n m^{-1} \bmod k$が求められる。
+$A$と$B$が小さい素因数しか持たず、$E$の位数は
+$$5 A B = 2^3 3^3 5^4 7^3 11^3 13^3 17^3 19^3 23^3 29^3 31^3 37^3 41^3 43^3 47^3 53^3 59^3 61^3 67^3 71^3 73^3 79^3 83^3 89^3 97^3 101^3 103^3 107^3 109^3 127^3 131^3$$
+とsmoothな値であることから、これを各素冪因子に対して繰り返すことによって$n m^{-1} \bmod {5 A B}$が求まる。
+あとは$m$と$n$が小さいことを使って$m$, $n$を求める。これにはSageMathの`rational_reconstruction`を使うと簡単。
+ソルバは以下の通り。
+
+<details>
+<summary>ソルバ（クリックで展開）</summary>
+```python showLineNumbers
+params = Params(l_primes, l_exps, q_primes, q_exps, g0, g1, f)
+
+sc = process(["sage", "chall.sage"])
+
+sc.recvuntil(b"E = ")
+E_alice = EllipticCurve(params.Fp2, [*sage_eval(sc.recvline().decode(), locals={"i": params.i})])
+sc.recvuntil(b"R = ")
+R_alice = E_alice(*sage_eval(sc.recvline().decode(), locals={"i": params.i}))
+sc.recvuntil(b"S = ")
+S_alice = E_alice(*sage_eval(sc.recvline().decode(), locals={"i": params.i}))
+
+sc.recvuntil(b"E = ")
+E_bob = EllipticCurve(params.Fp2, [*sage_eval(sc.recvline().decode(), locals={"i": params.i})])
+sc.recvuntil(b"R = ")
+R_bob = E_bob(*sage_eval(sc.recvline().decode(), locals={"i": params.i}))
+sc.recvuntil(b"S = ")
+S_bob = E_bob(*sage_eval(sc.recvline().decode(), locals={"i": params.i}))
+
+alice_pk = PublicKey(E_alice, R_alice, S_alice)
+bob_pk = PublicKey(E_bob, R_bob, S_bob)
+sc.recvuntil(b"enc: ")
+flag_enc = bytes.fromhex(sc.recvline().decode())
+
+o = params.B * params.A * 5
+
+rs = []
+ms = []
+for p, e in tqdm(factor(o)):
+    v = 0
+    for j in range(1, e+1):
+        t = p**j
+
+        r = bob_pk.E.gen(0) * (o // t)
+        s = bob_pk.E.gen(1) * (o // t)
+
+        sc.sendlineafter(b"R: ", str(r.x().list() + r.y().list()).encode())
+        sc.sendlineafter(b"S: ", str(s.x().list() + s.y().list()).encode())
+        shared = sage_eval(sc.recvline().decode(), locals={"i": params.i})
+        fnd = []
+        for i in range(p):
+            nv = v + p**(j-1)*i
+            R_img = r + nv * s
+            if shared == bob_pk.E.isogeny(R_img, algorithm="factored").codomain().j_invariant():
+                v = nv
+                break
+    rs.append(v)
+    ms.append(p**e)
+v = crt(rs, ms)
+v = Zmod(o)(v).rational_reconstruction()
+tmp = sha256(str((v.denominator(), v.numerator())).encode()).digest()
+key = tmp[:16]
+iv = tmp[16:]
+flag = AES.new(key, AES.MODE_CBC, iv=iv).decrypt(flag_enc)
+print(flag)
+```
+</details>

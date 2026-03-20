@@ -1,0 +1,217 @@
+---
+title: "pairs again"
+categories: ["crypto"]
+---
+# 問題
+<details>
+<summary>問題文（クリックで展開）</summary>
+```python showLineNumbers
+# https://gist.github.com/maple3142/8933b70e6011043b65849314563fba55
+
+# BLS12-381
+# https://hackmd.io/@benjaminion/bls12-381
+x = var("x")
+q = 0x1A0111EA397FE69A4B1BA7B6434BACD764774B84F38512BF6730D2A0F6B0F6241EABFFFEB153FFFFB9FEFFFFFFFFAAAB
+r = 0x73EDA753299D7D483339D80809A1D80553BDA402FFFE5BFEFFFFFFFF00000001
+Fq = GF(q)
+Fq2 = GF(q ^ 2, "i", x ^ 2 + 1)
+i = Fq2.gen()
+u6 = 1 / (1 + i)
+b = 4
+
+
+E1 = EllipticCurve(Fq, (0, b))
+E2 = EllipticCurve(Fq2, (0, b / u6))
+G1 = E1.lift_x(
+    3685416753713387016781088315183077757961620795782546409894578378688607592378376318836054947676345821548104185464507
+)
+G2 = E2.lift_x(
+    352701069587466618187139116011060144890029952792775240219908644239793785735715026873347600343865175952761926303160
+    + i
+    * 3059144344244213709971259814753781636986470325476647558659373206291635324768958432433509563104347017837885763365758
+)
+assert r * G1 == 0
+assert r * G2 == 0
+
+
+u, i = polygens(Fq, "u,i")
+mod = ((1 + i) * u ^ 6 - 1).sylvester_matrix(i ^ 2 + 1, i).det().univariate_polynomial()
+Fq12 = GF(q ^ 12, "u", mod)
+u = Fq12.gen()
+E3 = EllipticCurve(Fq12, [0, 4])
+i_in_fq12 = Fq2.modulus().change_ring(ZZ)(polygen(Fq12)).roots(multiplicities=False)[1]
+assert i_in_fq12**2 + 1 == 0
+
+
+def fp2_to_fq12(el):
+    return el.polynomial()(i_in_fq12)
+
+
+G1x = E3(G1)
+G2x = E3(u ^ 2 * fp2_to_fq12(G2[0]), u ^ 3 * fp2_to_fq12(G2[1]))
+assert r * G1x == 0
+assert r * G2x == 0
+
+# ------------------------------
+
+import ast
+import signal
+
+with open("flag.txt", "r") as f:
+    FLAG = f.read()
+
+def pairing(P, Q):
+    return (P._miller_(Q, 1337 * r)) ^ ((q ^ 12 - 1) // r)
+
+signal.alarm(30)
+
+Px = int(input("Px: "))
+Py = int(input("Py: "))
+P = E3(Fq(Px), Fq(Py))
+Q = randrange(1, r) * G2x
+t = pairing(P, Q)
+assert t != 1
+print("pairing(P, Q) =", t)
+
+Qx = Fq12(ast.literal_eval(input("guess Qx: ")))
+Qy = Fq12(ast.literal_eval(input("guess Qy: ")))
+Q_ = E3(Qx, Qy)
+
+if t == pairing(P, Q_):
+    print(FLAG)
+
+```
+</details>
+
+ペアリングの問題。`P`が与えられ、`pairing(P, Q) == pairing(P, Q_)`となるような`Q_`をもとめることができればフラグが得られる。
+
+# 解法
+
+以下、`P.miller_(Q, m)`を$f_{m,P}(Q)$と表す。`pairing`関数は$f_{1337 r,P}(Q)^{e}$と表せる。（ここで、$e = \frac{q^{12} - 1}{r}$）
+
+Miller 関数は $f_{m n,P} = {f_{m,P}}^n \cdot f_{n,m P}$ が常に成り立つことを使って式変形を進めると、
+
+$$
+\begin{align*}
+f_{1337 r,P}(Q)^{e}
+&= (f_{1337,P}(Q)^{r} \cdot f_{r,1337 P}(Q))^{e} \\
+&= f_{1337,P}(Q)^{r e} \cdot f_{r,1337 P}(Q)^{e} \\
+&= f_{1337,P}(Q)^{q^{12}-1} \cdot f_{r,1337 P}(Q)^{e} \\
+&= f_{r,1337 P}(Q)^{e}
+\end{align*}
+$$
+
+となる。ここで、$P$として11-torsionとなるような点をとる。
+すると、除数公式$\mathrm{div}(f_{n,A}) = n[A]-[nA]-(n-1)[O]$と$r P = P$を用いれば、$u = \frac{r - 1}{11}$として、
+
+$$
+\begin{align*}
+\mathrm{div}(f_{r,1337 P})
+&= r[1337 P]-[r 1337 P]-(r-1)[O] \\
+&= r[1337 P]-[1337 P]-(r-1)[O] \\
+&= (r - 1)[1337 P - O] \\
+&= u (11[1337 P - O]) \\
+\end{align*}
+$$
+また、
+$$
+\begin{align*}
+\mathrm{div}(f_{11,1337 P})
+&= 11[1337 P]-[11 1337 P]-(11-1)[O] \\
+&= 11[1337 P]-[O]-10[O] \\
+&= 11[1337 P - O] \\
+\end{align*}
+$$
+
+よって、$\mathrm{div}(f_{r,1337 P}) = u \cdot \mathrm{div}(f_{11,1337 P})$
+であり、ここから$f_{r,1337 P}(Q) = c \cdot f_{11,1337 P}(Q)^{u}$がわかる。また、$c = 1$が実験よりわかる。ここから、
+
+$$
+\begin{align*}
+f_{1337 r,P}(Q)^{e}
+&= f_{11,1337 P}(Q)^{u e}
+\end{align*}
+$$
+
+
+ここで、$f_{11,1337 P}$を$x_Q, y_Q$の式として表すと、分母が9次、分子が10次の有理関数となる。これを$\frac{m_\mathrm{num}(x_Q, y_Q)}{m_\mathrm{den}(x_Q, y_Q)}$と表す。
+
+$m_\mathrm{num}(x_Q, y_Q) - \mathrm{pairing}(P, Q) ^ {(u e)^{-1} \bmod r} \cdot m_\mathrm{den}(x_Q, y_Q) \equiv 0 \pmod {q^{12}}$
+
+となるような$Q$を求めればよい。この式と$y(Q)^2 - x(Q)^3 - 4 \equiv 0 \pmod {q^{12}}$を連立させて解けば、`Q_`を求めることができる。
+
+
+<details>
+<summary>ソルバ（クリックで展開）</summary>
+```python showLineNumbers
+Rxy = PolynomialRing(Fq12, names=("X", "Y"))
+X, Y = Rxy.gens()
+Frac = Rxy.fraction_field()
+Xf = Frac(X)
+Yf = Frac(Y)
+
+def line_eval(Rp, Sp):
+    if Rp == -Sp:
+        return Xf - Frac(Rp[0])
+    x1 = Frac(Rp[0])
+    y1 = Frac(Rp[1])
+    if Rp != Sp:
+        x2 = Frac(Sp[0])
+        y2 = Frac(Sp[1])
+        lam = (y2 - y1) / (x2 - x1)
+    else:
+        lam = (Frac(3) * x1 * x1) / (Frac(2) * y1)
+    return (Yf - y1) - lam * (Xf - x1)
+
+def vert_eval(Tp):
+    if Tp.is_zero():
+        return Frac(1)
+    return Xf - Frac(Tp[0])
+
+def miller_symbolic(Pbase, m):
+    bits = list(reversed(Integer(m).digits(2)))
+    T = Pbase
+    f = Frac(1)
+    for bit in bits[1:]:
+        T2 = Integer(2) * T
+        f = f * f * line_eval(T, T) / vert_eval(T2)
+        T = T2
+        if bit == 1:
+            Tp = T + Pbase
+            f = f * line_eval(T, Pbase) / vert_eval(Tp)
+            T = Tp
+    return f
+
+P = E3(E1.random_element() * (E1.order() / 121))
+u = (r - 1) // 11
+exp = ((q ** 12 - 1) // r)
+d = pow(u * exp, -1, r)
+miller = miller_symbolic(1337 * P, Integer(11))
+scale = ((1337 * P)._miller_(G2x, Integer(11))) / pairing(P, G2x)
+m_num = miller.numerator()
+m_den = miller.denominator()
+
+sc = process(["sage", "chal.sage"])
+
+sc.sendlineafter(b"Px: ", str(P.x()).encode())
+sc.sendlineafter(b"Py: ", str(P.y()).encode())
+sc.recvuntil(b" = ")
+t = sage_eval(sc.recvline().decode(), locals={"u": Fq12.gen()})
+
+target = t ** d
+fn1 = m_num - target * m_den
+fn2 = Y*Y - X*X*X - 4
+fn3 = fn1.resultant(fn2, Y)
+
+for xr, _ in fn3.univariate_polynomial().roots():
+    for yr in (xr*xr*xr+4).sqrt(all=True):
+        assert yr * yr == xr*xr*xr + 4
+        if m_den(xr, yr) != 0 and miller(xr, yr) == target:
+            Q_ = E3(xr, yr)
+            assert t == pairing(P, Q_)
+            sc.sendlineafter(b"Qx: ", str(Q_.x().list()).encode())
+            sc.sendlineafter(b"Qy: ", str(Q_.y().list()).encode())
+            print(sc.recvline())
+
+```
+</details>
