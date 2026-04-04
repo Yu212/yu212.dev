@@ -1,13 +1,13 @@
 [
   {
-    "title": "clion-pwndbg-bridge",
+    "title": "PwnLion",
     "description": "A CLion plugin built for CTFs that brings Pwndbg-powered GDB workflows into a modern GUI.",
     "thumbnail": {
       "src": "/images/noimage.png",
       "width": 208,
       "height": 208
     },
-    "github_url": "https://github.com/Yu212/clion-pwndbg-bridge"
+    "github_url": "https://github.com/Yu212/PwnLion"
   },
   {
     "title": "Snake Game AI",
