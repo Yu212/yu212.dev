@@ -1,0 +1,164 @@
+---
+title: "Daily AlpacaHack B-SIDE - Is this Twisted?"
+date: "2026/04/22"
+interest: 5
+difficulty: 3
+tags:
+  - crypto
+  - mt19937
+---
+
+問題ソースコードは以下の通り。
+
+
+<details>
+<summary>問題ソースコード</summary>
+
+```python showLineNumbers
+import random
+import secrets
+import os
+
+flag = os.environ.get("FLAG", "Alpaca{dummy}")
+for r in range(128):
+    print(f"#{r+1}/128")
+    bit = secrets.randbelow(2)
+    a = [secrets.randbits(32) for _ in range(624)]
+    if bit:
+        random.setstate((3, (*a, 624), None))
+        a = [random.getrandbits(32) for _ in range(624)]
+    print(a)
+    if input("guess: ") != str(bit):
+        print(":(")
+        exit(1)
+print("flag:", flag)
+```
+
+</details>
+
+各ラウンドでは、`secrets.randbits(32)`を624回呼んで得られた32bit整数列か、その列をMT19937の内部状態として流し込んだあと`getrandbits(32)`を624回呼んで得られた列か、どちらかが`a`として出力されます。どちらであるかを128回連続で正しく当てられればフラグが得られます。
+
+# `secrets`と`random`の違い
+
+`secrets`モジュールはOSの乱数源(Linuxであれば`/dev/urandom`など)を利用する暗号論的疑似乱数生成器(CSPRNG)で、出力は真の乱数と区別できないと仮定して実質問題ありません。つまり、`secrets.randbits(32)`を624回呼んで得られる列に関しては、真の乱数に対して成り立たないような性質は基本的に見つけられないと考えていいです。
+
+一方で、`random`モジュールが採用しているMersenne Twister (MT19937)は暗号論的な設計ではなく、統計的にそこそこ質の良い乱数を高速に生成することを目的とした疑似乱数生成器です。$624 \times 32 = 19968$ bit分の内部状態を持っていて、これを決定論的に更新しながら乱数を出力していきます。
+
+したがって、「真の乱数なら成り立たないがMT19937の出力には成り立つ性質」を見つけることができれば、それが`a`で成り立つか調べることによって判別に使うことができそうです。
+
+# MT19937の内部構造
+
+MT19937は状態ベクトル$\mathrm{mt}_0, \mathrm{mt}_1, \dots, \mathrm{mt}_{623}$と現在のインデックス`index`を持ちます。乱数を1つ出力するたびに、状態$\mathrm{mt}_{\mathrm{index}}$に`temper`と呼ばれるビット演算のみからなる変換を適用した値を返し、`index`を1進めます。`index`が624に達すると、`twist`と呼ばれる処理で状態ベクトル全体を一気に更新し、`index`を0に戻します。
+
+CPythonでの実装は[こちら](https://github.com/python/cpython/blob/main/Modules/_randommodule.c#L135)にあり、抜粋すると以下のようになっています。
+
+```c showLineNumbers
+static uint32_t
+genrand_uint32(RandomObject *self)
+{
+    uint32_t y;
+    static const uint32_t mag01[2] = {0x0U, MATRIX_A};
+    /* mag01[x] = x * MATRIX_A  for x=0,1 */
+    uint32_t *mt;
+
+    mt = self->state;
+    if (self->index >= N) { /* generate N words at one time */
+        int kk;
+
+        for (kk=0;kk<N-M;kk++) {
+            y = (mt[kk]&UPPER_MASK)|(mt[kk+1]&LOWER_MASK);
+            mt[kk] = mt[kk+M] ^ (y >> 1) ^ mag01[y & 0x1U];
+        }
+        for (;kk<N-1;kk++) {
+            y = (mt[kk]&UPPER_MASK)|(mt[kk+1]&LOWER_MASK);
+            mt[kk] = mt[kk+(M-N)] ^ (y >> 1) ^ mag01[y & 0x1U];
+        }
+        y = (mt[N-1]&UPPER_MASK)|(mt[0]&LOWER_MASK);
+        mt[N-1] = mt[M-1] ^ (y >> 1) ^ mag01[y & 0x1U];
+
+        self->index = 0;
+    }
+
+    y = mt[self->index++];
+    y ^= (y >> 11);
+    y ^= (y << 7) & 0x9d2c5680U;
+    y ^= (y << 15) & 0xefc60000U;
+    y ^= (y >> 18);
+    return y;
+}
+```
+
+10-25行目の`if`文の中身が`twist`、28-31行目のXORとシフトを繰り返している部分が`temper`です。`N = 624`, `M = 397`, `UPPER_MASK = 0x80000000`, `LOWER_MASK = 0x7fffffff`, `MATRIX_A = 0x9908b0df`となっています。
+
+`temper`はビット演算のみからなる全単射な変換になっており、出力から元の状態$\mathrm{mt}_\mathrm{index}$を復元する逆演算`untemper`が存在します。導出は省略しますが、以下のようにして計算できます。これにより、624個の連続する出力から対応する状態ベクトルが手に入ります。
+
+```python showLineNumbers
+def untemper(y):
+    y ^= y >> 18
+    y ^= y << 15 & 0xefc60000
+    y ^= (y << 7 & 0x9d2c5680) ^ (y << 14 & 0x94284000) ^ (y << 21 & 0x14200000) ^ (y << 28 & 0x10000000)
+    y ^= y >> 11 ^ y >> 22
+    return y
+```
+
+問題に戻ると、`bit`の値ごとに得られる列は以下のようになっています。
+- `bit = 0`: `secrets.randbits(32)`を624回呼んだ列。
+- `bit = 1`: 同じ624個を`setstate`で内部状態にセットし、インデックスを624にした状態から`getrandbits(32)`を624回呼んだ列。1回目の呼び出しでインデックスが624なので`twist`が一度だけ走り、その後`temper`済みの値が624個返されます。
+
+`bit = 1`の場合、得られた列に`untemper`を適用すれば、`twist`直後の状態ベクトル$t_0, t_1, \dots, t_{623}$が得られることになります。以下では`secrets`由来の初期状態(twist前)を$s_0, \dots, s_{623}$、`twist`後を$t_0, \dots, t_{623}$と書くことにします。
+
+# 内部状態の冗長性と恒等式
+
+ここで着目したいのは、内部状態がメモリ上は$624 \times 32 = 19968$ bit分の領域を使っているにもかかわらず、MT19937の周期は$2^{19937} - 1$しかないという点です。つまり実質的には19937 bit分の情報しか持っておらず、$19968 - 19937 = 31$ bitは冗長ということになります。
+
+`twist`のCコードをもう一度眺めます。Pythonでわかりやすく書き直すと以下のようになります。
+
+```python showLineNumbers
+def twist(mt):
+    for i in range(0, 624):
+        x = (mt[i] & 0x80000000) | (mt[(i + 1) % 624] & 0x7fffffff)
+        mt[i] = mt[(i + 397) % 624] ^ (x >> 1) ^ ((x & 1) * 0x9908b0df)
+```
+
+`i=623`の時に注目すると、次の恒等式が得られます。
+
+$$
+t_{623} = t_{396} \oplus \mathrm{shift}\bigl((s_{623} \mathbin{\&} \mathtt{0x80000000}) \mathbin{|} (t_0 \mathbin{\&} \mathtt{0x7fffffff})\bigr)
+$$
+
+ただし$\mathrm{shift}(y) = (y \gg 1) \oplus ((y \mathbin{\&} 1) \cdot \mathtt{0x9908b0df})$です。
+
+よって、$t$がこの式を満たすかどうかを確かめれば、`bit`の値を判別できます。$s_{623}$の最上位1 bitは未知の値ですが、たかだか2通りしかないので、0と1の両方を代入して試せば十分です。
+
+`bit = 0`の場合にこの等式を満たしてしまう確率は$2^{-31}$程度であり、128ラウンド通しても十分高い確率で正しく判別することができます。
+
+# ソルバ
+
+上記の解法を実装したソルバは以下の通りです。
+
+```python showLineNumbers
+from pwn import *
+import ast
+
+def untemper(y):
+    y ^= y >> 18
+    y ^= y << 15 & 0xefc60000
+    y ^= (y << 7 & 0x9d2c5680) ^ (y << 14 & 0x94284000) ^ (y << 21 & 0x14200000) ^ (y << 28 & 0x10000000)
+    y ^= y >> 11 ^ y >> 22
+    return y
+
+sc = remote(..., ...)
+for _ in range(128):
+    sc.recvline()
+    a = ast.literal_eval(sc.recvline().decode())
+    a = [untemper(v) for v in a]
+    x0 = a[0] & 0x7fffffff
+    x1 = (a[0] & 0x7fffffff) ^ 0x80000000
+    f = lambda x: (x >> 1) ^ (x & 1) * 0x9908b0df
+    sc.recvuntil(b"guess: ")
+    if a[623] == a[396] ^ f(x0) or a[623] == a[396] ^ f(x1):
+        sc.sendline(b"1")
+    else:
+        sc.sendline(b"0")
+print(sc.recvline())
+```
