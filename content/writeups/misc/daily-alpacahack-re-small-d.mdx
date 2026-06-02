@@ -70,7 +70,8 @@ print(long_to_bytes(pow(c, pow(e, -1, phi), n)))
 ```
 
 一方、あまり知られていないであろう解法として、Dujellaによる $O(d / N^{0.25})$ の[解法](https://eprint.iacr.org/2008/459)が存在する。
-連分数展開のprefixが既知であることを利用して $d = r q_{m+1} + s q_m$ として表し、$(2^e)^d \equiv 2 \bmod n$ に代入して変形することで $(2^{e q_{m+1}})^r \equiv 2 (2^{-e q_m})^s \bmod n$ を得る。
+$k / d$の連分数展開のprefixが既知であることを利用して $q_{m+1}, q_{m}$ を用いて $d = r q_{m+1} + s q_m$ と表す。
+これを $(2^e)^d \equiv 2 \bmod n$ に代入して変形することで $(2^{e q_{m+1}})^r \equiv 2 (2^{-e q_m})^s \bmod n$ を得る。
 $r, s$ が小さいことを利用して両辺についてMeet in the Middleしている。
 
 ```python showLineNumbers
