@@ -92,14 +92,14 @@ a = pow(2, e * qr, n)
 b = pow(2, -e * qs, n)
 mp = {}
 aa = 1
-for u in range(2**275//qr):
-    mp[aa] = u
+for r in range(2**275//qr):
+    mp[aa] = r
     aa = aa * a % n
 bb = 2
-for v in range(2**275//qs):
+for s in range(2**275//qs):
     if bb in mp:
-        u = mp[bb]
-        d = u*qr + v*qs
+        r = mp[bb]
+        d = r*qr + s*qs
         print(long_to_bytes(pow(c, d, n)))
         break
     bb = bb * b % n
