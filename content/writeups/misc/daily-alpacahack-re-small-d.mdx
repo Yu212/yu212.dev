@@ -1,0 +1,106 @@
+---
+title: "Daily AlpacaHack B-SIDE - Re:Small d"
+date: "2026/05/30"
+interest: 5
+difficulty: 4
+tags:
+  - crypto
+  - rsa
+---
+
+問題ソースコードは以下の通り。
+
+
+<details>
+<summary>問題ソースコード</summary>
+
+```python showLineNumbers
+from Crypto.Util.number import bytes_to_long, getPrime, inverse
+from math import gcd
+
+
+flag = b"Alpaca{REDACTED}"
+
+while True:
+    p = getPrime(512)
+    q = getPrime(512)
+    n = p * q
+    phi = (p - 1) * (q - 1)
+
+    d = getPrime(275)  # n^0.25 < d < n^0.292
+    if gcd(d, phi) == 1:
+        break
+
+e = inverse(d, phi)
+c = pow(bytes_to_long(flag), e, n)
+
+print(f"n = {n}")
+print(f"e = {e}")
+print(f"c = {c}")
+```
+
+</details>
+
+想定解はBoneh-Durfee Attackで、[`cuso`](https://github.com/keeganryan/cuso) を用いて以下のようにして解ける。
+
+```python showLineNumbers
+from Crypto.Util.number import long_to_bytes
+from sage.all import ZZ
+import cuso
+
+n = ...
+e = ...
+c = ...
+
+x, y = ZZ["x, y"].gens()
+A = n + 1
+f = x * (A - y) + 1
+
+roots = cuso.find_small_roots(
+    relations = [f],
+    bounds = {
+        x: (0, 2**275),
+        y: (0, 2**513),
+    },
+    modulus=e,
+    unraveled_linearization_relations=[x*y + 1],
+)
+phi = A - roots[0][y]
+print(long_to_bytes(pow(c, pow(e, -1, phi), n)))
+```
+
+一方、あまり知られていないであろう解法として、Dujellaによる $O(d / N^{0.25})$ の[解法](https://eprint.iacr.org/2008/459)が存在する。
+連分数展開のprefixが既知であることを利用して $d = r q_{m+1} + s q_m$ として表し、$(2^e)^d \equiv 2 \bmod n$ に代入して変形することで $(2^{e q_{m+1}})^r \equiv 2 (2^{-e q_m})^s \bmod n$ を得る。
+$r, s$ が小さいことを利用して両辺についてMeet in the Middleしている。
+
+```python showLineNumbers
+import itertools
+from Crypto.Util.number import long_to_bytes
+from sage.all import continued_fraction, Integer
+
+n = ...
+e = ...
+c = ...
+
+cf1 = continued_fraction(e / Integer(n - 2**513))
+cf2 = continued_fraction(e / Integer(n - 2**512))
+for i in itertools.count(0):
+    if cf1.convergent(i) != cf2.convergent(i):
+        break
+    qr, qs = int(cf1.denominator(i)), int(cf1.denominator(i - 1))
+a = pow(2, e * qr, n)
+b = pow(2, -e * qs, n)
+mp = {}
+aa = 1
+for u in range(2**275//qr):
+    mp[aa] = u
+    aa = aa * a % n
+bb = 2
+for v in range(2**275//qs):
+    if bb in mp:
+        u = mp[bb]
+        d = u*qr + v*qs
+        print(long_to_bytes(pow(c, d, n)))
+        break
+    bb = bb * b % n
+```
