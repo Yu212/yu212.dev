@@ -1,5 +1,15 @@
 [
   {
+    "title": "AgentArboretum",
+    "description": "Desktop viewer for displaying coding agent conversation logs.",
+    "thumbnail": {
+      "src": "/images/noimage.png",
+      "width": 208,
+      "height": 208
+    },
+    "github_url": "https://github.com/Yu212/AgentArboretum"
+  },
+  {
     "title": "PwnLion",
     "description": "A CLion plugin built for CTFs that brings Pwndbg-powered GDB workflows into a modern GUI.",
     "thumbnail": {

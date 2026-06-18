@@ -1,5 +1,12 @@
 [
   {
+    "icon": "🏅",
+    "date": "2026/05",
+    "text": "International Cybersecurity Challenge 2026 5位",
+    "team_name": "Team Asia",
+    "num_members": 16
+  },
+  {
     "icon": "🏆",
     "date": "2026/03",
     "text": "CognitiveHack Japan 2026 総合優勝",
@@ -16,7 +23,7 @@
   {
     "icon": "🥈",
     "date": "2025/11",
-    "text": "International Cybersecurity Challenge TOKYO 2025 2位",
+    "text": "International Cybersecurity Challenge 2025 2位",
     "team_name": "Team Asia",
     "num_members": 17
   },
